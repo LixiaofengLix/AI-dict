@@ -1,0 +1,14 @@
+# 参考项目：只读，不修改、不参与构建
+ReadingBook/
+pot-desktop-master/
+
+# macOS
+.DS_Store
+
+# 依赖与构建产物
+node_modules/
+dist/
+src-tauri/target/
+
+# 日志
+*.log
