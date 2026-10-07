@@ -1,0 +1,54 @@
+import { describe, expect, it } from 'vitest';
+import { placeNearCursor } from '../popupPosition';
+
+// 弹窗 420x320，见 src-tauri/tauri.conf.json
+const POPUP = { width: 420, height: 320 };
+const MAIN_SCREEN = { x: 0, y: 0, width: 1920, height: 1080 };
+
+describe('placeNearCursor', () => {
+  it('常规位置摆在光标右下角，留 12px 偏移', () => {
+    expect(placeNearCursor({ x: 500, y: 400 }, POPUP, MAIN_SCREEN)).toEqual({ x: 512, y: 412 });
+  });
+
+  it('主屏右下角往回收', () => {
+    expect(placeNearCursor({ x: 1918, y: 1078 }, POPUP, MAIN_SCREEN)).toEqual({ x: 1500, y: 760 });
+  });
+
+  it('主屏左上角不会越出工作区', () => {
+    const workArea = { x: 0, y: 25, width: 1920, height: 1055 };
+    expect(placeNearCursor({ x: 0, y: 25 }, POPUP, workArea)).toEqual({ x: 12, y: 37 });
+  });
+
+  it('工作区带偏移时（macOS 菜单栏）不钻到菜单栏下面', () => {
+    const workArea = { x: 0, y: 25, width: 1920, height: 1055 };
+    expect(placeNearCursor({ x: 5, y: 30 }, POPUP, workArea)).toEqual({ x: 17, y: 42 });
+  });
+
+  it('副屏左上角：留在副屏，不会被推回主屏', () => {
+    const secondScreen = { x: 1920, y: 0, width: 2560, height: 1440 };
+    expect(placeNearCursor({ x: 1925, y: 100 }, POPUP, secondScreen)).toEqual({
+      x: 1937,
+      y: 112,
+    });
+  });
+
+  it('副屏右下角：仍然收在副屏里', () => {
+    const secondScreen = { x: 1920, y: 0, width: 2560, height: 1440 };
+    expect(placeNearCursor({ x: 4470, y: 1430 }, POPUP, secondScreen)).toEqual({
+      x: 4060,
+      y: 1120,
+    });
+  });
+
+  it('窗口比工作区还大时先保左上角', () => {
+    const tiny = { x: 0, y: 0, width: 300, height: 200 };
+    expect(placeNearCursor({ x: 100, y: 100 }, POPUP, tiny)).toEqual({ x: 0, y: 0 });
+  });
+
+  it('光标是浮点（2 倍屏上 Tauri 给的就是浮点）时取整', () => {
+    expect(placeNearCursor({ x: 100.71875, y: 200.5 }, POPUP, MAIN_SCREEN)).toEqual({
+      x: 113,
+      y: 213,
+    });
+  });
+});

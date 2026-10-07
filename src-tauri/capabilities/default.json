@@ -1,7 +1,15 @@
 {
   "$schema": "../gen/schemas/desktop-schema.json",
   "identifier": "default",
-  "description": "main / popup 两个窗口的基础权限",
+  "description": "main / popup 两个窗口的权限：基础 + 弹窗定位、隐藏、置顶、拖动",
   "windows": ["main", "popup"],
-  "permissions": ["core:default", "core:window:allow-show", "core:window:allow-set-focus"]
+  "permissions": [
+    "core:default",
+    "core:window:allow-show",
+    "core:window:allow-hide",
+    "core:window:allow-set-focus",
+    "core:window:allow-set-position",
+    "core:window:allow-set-always-on-top",
+    "core:window:allow-start-dragging"
+  ]
 }
