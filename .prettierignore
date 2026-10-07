@@ -1,0 +1,14 @@
+# 参考项目
+ReadingBook/
+pot-desktop-master/
+
+# 手写的文档，不参与格式化
+docs/
+
+# 构建产物
+dist/
+src-tauri/target/
+src-tauri/gen/
+
+# 锁文件
+pnpm-lock.yaml
