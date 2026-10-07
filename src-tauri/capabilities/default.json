@@ -3,5 +3,5 @@
   "identifier": "default",
   "description": "main / popup 两个窗口的基础权限",
   "windows": ["main", "popup"],
-  "permissions": ["core:default"]
+  "permissions": ["core:default", "core:window:allow-show", "core:window:allow-set-focus"]
 }

@@ -1,0 +1,8 @@
+{
+  "$schema": "../gen/schemas/desktop-schema.json",
+  "identifier": "desktop-capability",
+  "description": "桌面平台专用权限。global-shortcut:default 是空的，注册快捷键要单独开",
+  "platforms": ["macOS", "windows", "linux"],
+  "windows": ["main"],
+  "permissions": ["global-shortcut:allow-register"]
+}

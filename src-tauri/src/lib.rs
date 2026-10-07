@@ -1,7 +1,7 @@
 use tauri::{
     menu::{Menu, MenuItem},
     tray::TrayIconBuilder,
-    Manager, WindowEvent,
+    Emitter, Manager, WindowEvent,
 };
 
 /// 把窗口叫出来。窗口是隐藏而不是销毁的，所以先取消最小化再显示
@@ -16,11 +16,12 @@ fn show_window(app: &tauri::AppHandle, label: &str) {
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
-        // 单实例插件要第一个注册
+        // 单实例插件要第一个注册，所以放在快捷键插件前面
         .plugin(tauri_plugin_single_instance::init(|app, _args, _cwd| {
             // 第二次启动时把主窗口叫出来
             show_window(app, "main");
         }))
+        .plugin(tauri_plugin_global_shortcut::Builder::new().build())
         .setup(|app| {
             // macOS：只驻留托盘，不出现在 Dock 和 Cmd+Tab 里
             #[cfg(target_os = "macos")]
@@ -41,7 +42,15 @@ pub fn run() {
                 .menu(&menu)
                 .show_menu_on_left_click(true)
                 .on_menu_event(|app, event| match event.id.as_ref() {
-                    "input" => show_window(app, "popup"),
+                    "input" => {
+                        show_window(app, "popup");
+                        // 事件名和 payload 要和 src/services/window.ts 里的一致
+                        let _ = app.emit_to(
+                            "popup",
+                            "popup-trigger",
+                            serde_json::json!({ "action": "input" }),
+                        );
+                    }
                     "vocabulary" | "settings" => show_window(app, "main"),
                     "quit" => app.exit(0),
                     _ => {}
