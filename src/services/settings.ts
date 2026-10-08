@@ -1,4 +1,5 @@
 import type { AiConfig, ThinkingMode } from '../types/ai';
+import type { Accent } from '../types/settings';
 import { getDb } from './db';
 
 /** settings 表按 key 存一行，value 是 JSON。AI 配置（含 API Key）都在这行里 */
@@ -61,4 +62,12 @@ export async function getAiConfig(): Promise<AiConfig> {
 
 export async function setAiConfig(config: AiConfig): Promise<void> {
   await write(KEY_AI, config);
+}
+
+/**
+ * 单词发音和音标的口音。设置页（7.1）才做这个开关，先固定美音。
+ * AI 词典按口音缓存音标，所以这个值以后要进缓存的 key（见 ai/cache.ts 的 wordKey）。
+ */
+export async function getAccent(): Promise<Accent> {
+  return 'us';
 }

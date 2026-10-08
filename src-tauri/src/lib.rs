@@ -40,6 +40,8 @@ pub fn run() {
             show_window(app, "main");
         }))
         .plugin(tauri_plugin_global_shortcut::Builder::new().build())
+        // AI 请求走插件的 fetch（绕过 CORS、支持流式，见 src/services/ai/client.ts）
+        .plugin(tauri_plugin_http::init())
         // 数据库：注册迁移，真正建库在前端 Database.load 时（见 src/services/db.ts）
         .plugin(
             tauri_plugin_sql::Builder::new()
