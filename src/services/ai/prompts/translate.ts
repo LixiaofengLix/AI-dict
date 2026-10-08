@@ -4,7 +4,7 @@ import { passageBlock } from './passage';
 import { DIRECT } from './style';
 
 const SYSTEM = [
-  '你是英译中的文学译者兼英语老师，帮中文读者读懂英文原著。',
+  '你是英译中的译者兼英语老师，帮中文用户看懂英文。',
   '用简体中文回答，只用题目给的 Markdown 格式。',
   DIRECT,
 ].join('\n');
@@ -22,7 +22,7 @@ export function translateMessages(input: PassageContext): ChatMessage[] {
         '忠实、通顺的译文，保留语气和修辞；人名、地名用通行译名。',
         '',
         '## 句意解释',
-        '1–2 句、不超过 80 字：只讲读者容易读不懂的地方——指代、言外之意、幽默或讽刺；不复述译文。',
+        '1–2 句、不超过 80 字：只讲中文用户容易读不懂的地方——指代、言外之意、幽默或讽刺；不复述译文。',
         '',
         '只输出这两节。',
       ].join('\n'),

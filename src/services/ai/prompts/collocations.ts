@@ -36,7 +36,7 @@ export function collocationsMessages(word: string, sentence: string): ChatMessag
         '要求：',
         `- 最多 ${MAX_ITEMS} 条最常用的，按常用程度排列：固定词组、短语动词、常见词语搭配`,
         '- phrase 用原形书写，可用 sb. / sth. 占位；meaning 是简短的中文释义',
-        '- forms 列出这个搭配在文章里可能出现的全部写法，全部小写：包括 phrase 本身和其中动词、名词的各种变形；',
+        '- forms 列出这个搭配在实际文本里可能出现的全部写法，全部小写：包括 phrase 本身和其中动词、名词的各种变形；',
         '  用 / 表示的几种说法分开写；sb. / sth. 等占位词原样保留',
         `- ${SHORT_EXAMPLE}，exampleTranslation 是它的中文翻译`,
         '- 这个词没有常见搭配时 collocations 给空数组',

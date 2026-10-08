@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { AiError } from '../errors';
 import { aiDictionaryMessages, parseAiDictionary } from '../prompts/aiDictionary';
+import { contextMeaningMessages } from '../prompts/contextMeaning';
 import { parseCollocations } from '../prompts/collocations';
 import { extractJsonObject } from '../prompts/json';
 import { passageBlock } from '../prompts/passage';
@@ -182,6 +183,28 @@ describe('parseCollocations', () => {
   it('空数组是正常结果，没有 collocations 字段报 format', () => {
     expect(parseCollocations('{"collocations": []}')).toEqual([]);
     expect(() => parseCollocations('{"items": []}')).toThrow(AiError);
+  });
+});
+
+describe('contextMeaningMessages', () => {
+  const messagesFor = (word: string, sentence: string) => {
+    const messages = contextMeaningMessages(word, sentence);
+    return messages[messages.length - 1].content;
+  };
+
+  it('带上原句和单词，要求以"这个词在这里指"开头', () => {
+    const user = messagesFor('off', 'The alarm went off just as I was about to leave.');
+
+    expect(user).toContain('The alarm went off just as I was about to leave.');
+    expect(user).toContain('off 在这里指');
+  });
+
+  it('是短语的一部分时要写出完整短语并解释整体意思', () => {
+    const user = messagesFor('off', 'The alarm went off just as I was about to leave.');
+
+    expect(user).toContain('短语动词');
+    expect(user).toContain('go off');
+    expect(user).toContain('写出完整短语');
   });
 });
 
