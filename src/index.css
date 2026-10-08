@@ -1,2 +1,51 @@
-/* Tailwind 入口。主题色、字号以后按 ReadingBook 的 src/theme/ 写进 @theme */
+/* Tailwind 入口 */
 @import 'tailwindcss';
+
+/*
+ * 主题：颜色、字号参照 ReadingBook 的 src/theme/（colors.ts、typography.ts）。
+ * 深色模式直接跟随系统，见下面的媒体查询（同一批变量换一套深色值）。
+ */
+@theme {
+  --color-page: #f7f0e6; /* 页面主背景：暖米白 */
+  --color-surface: #fffefa; /* 卡片 */
+  --color-sheet: #ffffff; /* 输入框等浮在卡片上的表面 */
+  --color-line: #e7e0d2; /* 描边、分隔线 */
+  --color-segment: #ebeae6; /* 分段控件底轨 */
+  --color-primary: #a8462f; /* 砖红：主按钮 */
+  --color-on-primary: #ffffff;
+  --color-success: #4e8a5b;
+  --color-danger: #d64533;
+  --color-ink: #241e18; /* 主文字（ReadingBook 的 textPrimary） */
+  --color-ink-body: #544e48;
+  --color-ink-soft: #857e73;
+  --color-ink-faint: #ada69c;
+
+  --text-title: 20px;
+  --text-body: 15px;
+  --text-callout: 14px;
+  --text-footnote: 13px;
+  --text-caption: 12px;
+
+  --radius-field: 10px;
+  --radius-card: 14px;
+  --shadow-card: 0 2px 10px rgb(80 60 30 / 0.06);
+  --shadow-segment: 0 1px 3px rgb(0 0 0 / 0.12);
+}
+
+/* 深色模式：ReadingBook 没有深色版界面配色，这组是照它的暖色调推的 */
+@media (prefers-color-scheme: dark) {
+  :root {
+    --color-page: #1c1a17;
+    --color-surface: #262320;
+    --color-sheet: #2e2a26;
+    --color-line: #3d3833;
+    --color-segment: #302c28;
+    --color-primary: #c0563a;
+    --color-success: #7fb98c;
+    --color-danger: #e4756a;
+    --color-ink: #ece7df;
+    --color-ink-body: #c6bfb5;
+    --color-ink-soft: #a29a8e;
+    --color-ink-faint: #7c756a;
+  }
+}
