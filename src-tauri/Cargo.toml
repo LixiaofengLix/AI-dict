@@ -34,3 +34,20 @@ strip = true
 [target.'cfg(not(any(target_os = "android", target_os = "ios")))'.dependencies]
 tauri-plugin-global-shortcut = "2"
 tauri-plugin-single-instance = "2"
+
+# 取选中文字（见 src/selection.rs）。
+# macOS 自己实现，不用 get-selected-text：它在 macOS 上的回退路径要靠 osascript 模拟 Cmd+C，
+# 会多要一条「自动化」权限（控制 System Events），开发期重新构建后这个授权还容易失效。
+[target.'cfg(target_os = "macos")'.dependencies]
+arboard = "3"
+# 读辅助功能接口返回的 CFString
+core-foundation = "0.9"
+# 合成 Cmd+C、读修饰键状态
+core-graphics = "0.22"
+# 取前台应用的 pid（NSWorkspace.frontmostApplication）
+objc = "0.2"
+
+# Windows 用 get-selected-text（MIT）：它模拟 Ctrl+C 读剪贴板，剪贴板自己会还原
+[target.'cfg(target_os = "windows")'.dependencies]
+get-selected-text = "0.1.6"
+windows-sys = { version = "0.59", features = ["Win32_UI_Input_KeyboardAndMouse"] }

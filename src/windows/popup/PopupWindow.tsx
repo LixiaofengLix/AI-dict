@@ -4,8 +4,8 @@ import { getCurrentWindow } from '@tauri-apps/api/window';
 import {
   POPUP_ACTION_LABELS,
   POPUP_TRIGGER_EVENT,
-  type PopupAction,
   type PopupTriggerPayload,
+  type SelectionResult,
 } from '../../services/window';
 
 /** 失焦后等这么久再关：Windows 上拖动窗口会短暂失焦，立刻关会误伤（pot 踩过这个坑） */
@@ -13,14 +13,14 @@ const BLUR_CLOSE_DELAY = 100;
 
 // 划词翻译 / 输入翻译弹窗：按鼠标位置弹出、失焦关闭、可拖动、可固定
 export default function PopupWindow() {
-  const [action, setAction] = useState<PopupAction | null>(null);
+  const [trigger, setTrigger] = useState<PopupTriggerPayload | null>(null);
   const [pinned, setPinned] = useState(false);
   // 失焦回调里要读最新的固定状态，用 ref 同步一份
   const pinnedRef = useRef(false);
 
   useEffect(() => {
     const unlisten = listen<PopupTriggerPayload>(POPUP_TRIGGER_EVENT, (event) =>
-      setAction(event.payload.action),
+      setTrigger(event.payload),
     );
     return () => {
       void unlisten.then((fn) => fn());
@@ -84,12 +84,28 @@ export default function PopupWindow() {
         </button>
       </header>
 
-      <main className="flex flex-1 flex-col items-center justify-center gap-2">
-        <h1 className="text-base font-semibold">AI-dict 弹窗</h1>
-        <p className="text-sm text-neutral-500 dark:text-neutral-400">
-          {action ? `触发方式：${POPUP_ACTION_LABELS[action]}` : '还没被触发过'}
-        </p>
+      <main className="flex min-h-0 flex-1 flex-col gap-2 p-3">
+        <h1 className="text-base font-semibold">
+          {trigger ? POPUP_ACTION_LABELS[trigger.action] : 'AI-dict 弹窗'}
+        </h1>
+        {trigger?.action === 'selection' && <SelectionView selection={trigger.selection} />}
       </main>
     </div>
+  );
+}
+
+/** 2.1 的临时界面：把取到的文字原样显示出来，5.1 起换成真正的翻译界面 */
+function SelectionView({ selection }: { selection?: SelectionResult }) {
+  if (!selection) return null;
+  if (!selection.ok) {
+    return <p className="text-sm text-red-600 dark:text-red-400">取词失败：{selection.error}</p>;
+  }
+  if (!selection.text) {
+    return <p className="text-sm text-neutral-500 dark:text-neutral-400">没取到选中的文字</p>;
+  }
+  return (
+    <p className="min-h-0 flex-1 overflow-y-auto rounded bg-neutral-100 p-2 text-sm break-words whitespace-pre-wrap dark:bg-neutral-800">
+      {selection.text}
+    </p>
   );
 }

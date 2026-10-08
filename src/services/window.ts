@@ -8,6 +8,7 @@ import {
   type Monitor,
 } from '@tauri-apps/api/window';
 import { placeNearCursor, type Rect } from '../utils/popupPosition';
+import { getSelectedText } from './selection';
 
 /** 弹窗的两种触发方式：划词取词、手动输入 */
 export type PopupAction = 'selection' | 'input';
@@ -22,8 +23,13 @@ export const POPUP_ACTION_LABELS: Record<PopupAction, string> = {
  */
 export const POPUP_TRIGGER_EVENT = 'popup-trigger';
 
+/** 划词翻译的取词结果：文字（可能是空字符串，表示没选中东西）或失败原因 */
+export type SelectionResult = { ok: true; text: string } | { ok: false; error: string };
+
 export interface PopupTriggerPayload {
   action: PopupAction;
+  /** 划词翻译取到的结果；输入翻译不带这个字段 */
+  selection?: SelectionResult;
 }
 
 function workAreaOf(monitor: Monitor): Rect {
@@ -55,9 +61,23 @@ export async function showPopup(action: PopupAction): Promise<void> {
   const popup = await WebviewWindow.getByLabel('popup');
   if (!popup) return;
 
+  // 划词翻译要在弹窗显示之前取词：辅助功能接口和模拟复制都要求被划词的应用还是前台，
+  // 弹窗一显示焦点就跑到我们这边了。走辅助功能接口时取词是微秒级的，弹窗照样立刻出现
+  const payload: PopupTriggerPayload = action === 'selection' ? await takeSelection() : { action };
+
   // 先定位再显示，免得窗口在旧位置闪一下
   await moveToCursor(popup);
-  await emitTo('popup', POPUP_TRIGGER_EVENT, { action } satisfies PopupTriggerPayload);
+  await emitTo('popup', POPUP_TRIGGER_EVENT, payload);
   await popup.show();
   await popup.setFocus();
+}
+
+/** 取当前选中的文字，失败时把错误信息一起带给弹窗 */
+async function takeSelection(): Promise<PopupTriggerPayload> {
+  try {
+    return { action: 'selection', selection: { ok: true, text: await getSelectedText() } };
+  } catch (error) {
+    console.error('取选中文字失败', error);
+    return { action: 'selection', selection: { ok: false, error: String(error) } };
+  }
 }

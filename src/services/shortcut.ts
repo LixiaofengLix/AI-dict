@@ -1,4 +1,4 @@
-import { register } from '@tauri-apps/plugin-global-shortcut';
+import { register, unregister, type ShortcutEvent } from '@tauri-apps/plugin-global-shortcut';
 import { isMac } from '../utils/platform';
 import { POPUP_ACTION_LABELS, showPopup, type PopupAction } from './window';
 
@@ -30,10 +30,7 @@ export async function registerShortcuts(): Promise<FailedShortcut[]> {
   for (const action of ['selection', 'input'] as const) {
     const accelerator = DEFAULT_SHORTCUTS[action];
     try {
-      await register(accelerator, (event) => {
-        // 按下和松开都会回调，只在按下时触发
-        if (event.state === 'Pressed') void showPopup(action);
-      });
+      await registerOne(accelerator, () => void showPopup(action));
     } catch (error) {
       console.error(`${POPUP_ACTION_LABELS[action]} 的快捷键 ${accelerator} 注册失败`, error);
       failedShortcuts.push({ action, accelerator });
@@ -41,4 +38,25 @@ export async function registerShortcuts(): Promise<FailedShortcut[]> {
   }
 
   return failedShortcuts;
+}
+
+/**
+ * 注册一个快捷键，失败时先取消再试一次。
+ *
+ * 前端热更新或重载之后，Rust 那边还留着上一次的注册（它的回调指向已经销毁的页面），
+ * 这时直接注册会报 "RegisterEventHotKey failed"，于是快捷键就彻底不响应了——
+ * 先 unregister 把旧的清掉再注册才能拿到新回调。
+ */
+async function registerOne(accelerator: string, onPressed: () => void): Promise<void> {
+  const handler = (event: ShortcutEvent) => {
+    // 按下和松开都会回调，只在按下时触发
+    if (event.state === 'Pressed') onPressed();
+  };
+
+  try {
+    await register(accelerator, handler);
+  } catch {
+    await unregister(accelerator).catch(() => {});
+    await register(accelerator, handler);
+  }
 }
