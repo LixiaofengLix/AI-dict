@@ -32,3 +32,16 @@ export function placeNearCursor(
     y: Math.round(Math.max(area.y, Math.min(cursor.y + CURSOR_OFFSET, maxY))),
   };
 }
+
+/**
+ * 算弹窗该摆在哪儿：工作区正中间。
+ *
+ * 输入翻译用这个——它是快捷键触发的，无从知道用户想在哪块屏幕上看到它，
+ * 鼠标可能在别处，跟着鼠标跑反而不讲道理。窗口比工作区还大时先保左上角，和上面那条一致。
+ */
+export function centerInWorkArea(size: Size, area: Rect): { x: number; y: number } {
+  return {
+    x: Math.round(area.x + Math.max(0, area.width - size.width) / 2),
+    y: Math.round(area.y + Math.max(0, area.height - size.height) / 2),
+  };
+}

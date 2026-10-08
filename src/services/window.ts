@@ -7,7 +7,7 @@ import {
   primaryMonitor,
   type Monitor,
 } from '@tauri-apps/api/window';
-import { placeNearCursor, type Rect } from '../utils/popupPosition';
+import { centerInWorkArea, placeNearCursor, type Rect } from '../utils/popupPosition';
 import { getSelectedText, isAccessibilityTrusted } from './selection';
 
 /** 弹窗的两种触发方式：划词取词、手动输入 */
@@ -47,20 +47,24 @@ function workAreaOf(monitor: Monitor): Rect {
   };
 }
 
-/** 把弹窗摆到光标右下角，所在显示器装不下就往回收 */
-async function moveToCursor(popup: WebviewWindow): Promise<void> {
+/**
+ * 摆弹窗：划词摆到光标右下角（用户刚在那儿划的词），输入翻译摆在工作区正中间。
+ * 两种都先按光标位置反查是哪块显示器，副屏上也不会摆回主屏。
+ */
+async function placePopup(popup: WebviewWindow, action: PopupAction): Promise<void> {
   const cursor = await cursorPosition();
-  // 光标可能在任意一块显示器上，按光标位置反查是哪一块
   const monitor = (await monitorFromPoint(cursor.x, cursor.y)) ?? (await primaryMonitor());
   if (!monitor) return;
 
   const size = await popup.outerSize();
-  const position = placeNearCursor(cursor, size, workAreaOf(monitor));
+  const area = workAreaOf(monitor);
+  const position =
+    action === 'input' ? centerInWorkArea(size, area) : placeNearCursor(cursor, size, area);
   await popup.setPosition(new PhysicalPosition(position.x, position.y));
 }
 
 /**
- * 把弹窗叫出来：摆到光标旁、告诉它触发方式，然后显示。
+ * 把弹窗叫出来：摆好位置、告诉它触发方式，然后显示。
  * 弹窗是复用的同一个窗口，连续触发不会多开。
  */
 export async function showPopup(action: PopupAction): Promise<void> {
@@ -72,7 +76,7 @@ export async function showPopup(action: PopupAction): Promise<void> {
   const payload: PopupTriggerPayload = action === 'selection' ? await takeSelection() : { action };
 
   // 先定位再显示，免得窗口在旧位置闪一下
-  await moveToCursor(popup);
+  await placePopup(popup, action);
   await emitTo('popup', POPUP_TRIGGER_EVENT, payload);
   await popup.show();
   await popup.setFocus();

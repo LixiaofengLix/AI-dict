@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { placeNearCursor } from '../popupPosition';
+import { centerInWorkArea, placeNearCursor } from '../popupPosition';
 
 // 弹窗 420x320，见 src-tauri/tauri.conf.json
 const POPUP = { width: 420, height: 320 };
@@ -50,5 +50,26 @@ describe('placeNearCursor', () => {
       x: 113,
       y: 213,
     });
+  });
+});
+
+describe('centerInWorkArea', () => {
+  it('主屏正中', () => {
+    expect(centerInWorkArea(POPUP, MAIN_SCREEN)).toEqual({ x: 750, y: 380 });
+  });
+
+  it('工作区带偏移时（macOS 菜单栏）以工作区为准，不是整块屏幕', () => {
+    const workArea = { x: 0, y: 25, width: 1920, height: 1055 };
+    expect(centerInWorkArea(POPUP, workArea)).toEqual({ x: 750, y: 393 });
+  });
+
+  it('副屏摆在副屏正中，不会被推回主屏', () => {
+    const secondScreen = { x: 1920, y: 0, width: 2560, height: 1440 };
+    expect(centerInWorkArea(POPUP, secondScreen)).toEqual({ x: 2990, y: 560 });
+  });
+
+  it('窗口比工作区还大时先保左上角', () => {
+    const tiny = { x: 0, y: 0, width: 300, height: 200 };
+    expect(centerInWorkArea(POPUP, tiny)).toEqual({ x: 0, y: 0 });
   });
 });
