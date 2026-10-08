@@ -61,7 +61,12 @@ pub fn run() {
 
             Ok(())
         })
-        .invoke_handler(tauri::generate_handler![selection::get_selected_text])
+        .invoke_handler(tauri::generate_handler![
+            selection::get_selected_text,
+            selection::is_accessibility_trusted,
+            selection::request_accessibility_permission,
+            selection::open_accessibility_settings
+        ])
         .on_window_event(|window, event| {
             // 关窗只隐藏，应用继续驻留托盘；退出走托盘菜单
             if let WindowEvent::CloseRequested { api, .. } = event {

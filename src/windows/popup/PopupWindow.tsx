@@ -7,6 +7,10 @@ import {
   type PopupTriggerPayload,
   type SelectionResult,
 } from '../../services/window';
+import {
+  openAccessibilitySettings,
+  requestAccessibilityPermission,
+} from '../../services/selection';
 
 /** 失焦后等这么久再关：Windows 上拖动窗口会短暂失焦，立刻关会误伤（pot 踩过这个坑） */
 const BLUR_CLOSE_DELAY = 100;
@@ -100,6 +104,9 @@ function SelectionView({ selection }: { selection?: SelectionResult }) {
   if (!selection.ok) {
     return <p className="text-sm text-red-600 dark:text-red-400">取词失败：{selection.error}</p>;
   }
+  // 有文字就说明权限是通的（两条取词路径都要权限），权限查询本身可能滞后，所以只在
+  // 一个字都没取到时才看它
+  if (!selection.text && !selection.trusted) return <PermissionView />;
   if (!selection.text) {
     return <p className="text-sm text-neutral-500 dark:text-neutral-400">没取到选中的文字</p>;
   }
@@ -107,5 +114,44 @@ function SelectionView({ selection }: { selection?: SelectionResult }) {
     <p className="min-h-0 flex-1 overflow-y-auto rounded bg-neutral-100 p-2 text-sm break-words whitespace-pre-wrap dark:bg-neutral-800">
       {selection.text}
     </p>
+  );
+}
+
+/**
+ * 没有辅助功能权限时的引导（macOS）。系统设置一打开，弹窗就失去焦点关掉了，
+ * 所以这里不用管"授权之后怎么办"——用户回来再按一次快捷键即可，取词那条路会重新判断权限。
+ */
+function PermissionView() {
+  const [error, setError] = useState<string | null>(null);
+
+  async function openSettings() {
+    setError(null);
+    try {
+      // 先请系统提示一次：这是把本应用加进「辅助功能」名单的唯一办法，
+      // 不调它，用户在系统设置的列表里根本找不到本应用的开关
+      await requestAccessibilityPermission();
+      await openAccessibilitySettings();
+    } catch (err) {
+      setError(String(err));
+    }
+  }
+
+  return (
+    <div className="flex min-h-0 flex-1 flex-col gap-2">
+      <p className="text-sm">{'取词要用 macOS 的「辅助功能」权限，现在还没开。'}</p>
+      <p className="text-xs text-neutral-500 dark:text-neutral-400">
+        {
+          '在「系统设置 → 隐私与安全性 → 辅助功能」里打开 AI-dict 的开关（开发期从终端启动时，这个权限算在终端头上），回来再按一次快捷键就行，不用重启。'
+        }
+      </p>
+      <button
+        type="button"
+        onClick={() => void openSettings()}
+        className="self-start rounded bg-neutral-900 px-2 py-1 text-xs text-white dark:bg-neutral-100 dark:text-neutral-900"
+      >
+        打开系统设置
+      </button>
+      {error && <p className="text-xs text-red-600 dark:text-red-400">{error}</p>}
+    </div>
   );
 }
