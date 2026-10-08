@@ -199,7 +199,11 @@ mod platform {
         let name = CFString::new(name);
         let mut value: CFTypeRef = ptr::null();
         let error = unsafe {
-            AXUIElementCopyAttributeValue(element, name.as_concrete_TypeRef() as CFTypeRef, &mut value)
+            AXUIElementCopyAttributeValue(
+                element,
+                name.as_concrete_TypeRef() as CFTypeRef,
+                &mut value,
+            )
         };
         if error != 0 || value.is_null() {
             return None;

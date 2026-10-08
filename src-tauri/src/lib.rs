@@ -5,6 +5,7 @@ use tauri::{
     tray::TrayIconBuilder,
     Emitter, Manager, WindowEvent,
 };
+use tauri_plugin_sql::{Migration, MigrationKind};
 
 /// 把窗口叫出来。窗口是隐藏而不是销毁的，所以先取消最小化再显示
 fn show_window(app: &tauri::AppHandle, label: &str) {
@@ -13,6 +14,21 @@ fn show_window(app: &tauri::AppHandle, label: &str) {
         let _ = window.show();
         let _ = window.set_focus();
     }
+}
+
+/// 数据库连接串，要和 src/services/db.ts 里的 DB_URL 一致。
+/// 不写路径，插件会把它放到应用配置目录（macOS：~/Library/Application Support/com.aidict.app/）
+const DB_URL: &str = "sqlite:ai-dict.db";
+
+/// 迁移：SQL 放在 src-tauri/migrations/ 下，按文件序号递增。
+/// 前端第一次 `Database.load` 时按版本号依次执行，已执行过的不会重跑。
+fn migrations() -> Vec<Migration> {
+    vec![Migration {
+        version: 1,
+        description: "初始化：生词本、AI 缓存、设置",
+        sql: include_str!("../migrations/001_init.sql"),
+        kind: MigrationKind::Up,
+    }]
 }
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
@@ -24,6 +40,12 @@ pub fn run() {
             show_window(app, "main");
         }))
         .plugin(tauri_plugin_global_shortcut::Builder::new().build())
+        // 数据库：注册迁移，真正建库在前端 Database.load 时（见 src/services/db.ts）
+        .plugin(
+            tauri_plugin_sql::Builder::new()
+                .add_migrations(DB_URL, migrations())
+                .build(),
+        )
         .setup(|app| {
             // macOS：只驻留托盘，不出现在 Dock 和 Cmd+Tab 里
             #[cfg(target_os = "macos")]
