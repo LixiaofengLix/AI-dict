@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { listen } from '@tauri-apps/api/event';
 import { getCurrentWindow } from '@tauri-apps/api/window';
+import { WordCard } from '../../features/lookup/WordCard';
 import {
   POPUP_ACTION_LABELS,
   POPUP_TRIGGER_EVENT,
@@ -10,6 +11,7 @@ import {
   openAccessibilitySettings,
   requestAccessibilityPermission,
 } from '../../services/selection';
+import { classifyInput } from '../../utils/classifyInput';
 
 /** 失焦后等这么久再关：Windows 上拖动窗口会短暂失焦，立刻关会误伤（pot 踩过这个坑） */
 const BLUR_CLOSE_DELAY = 100;
@@ -70,7 +72,7 @@ export default function PopupWindow() {
     await getCurrentWindow().setAlwaysOnTop(next);
   }
 
-  /** 提交输入框里的内容。2.3 只原样显示出来，4.1 的分类和 5.x 的模式接上来之后走这里 */
+  /** 提交输入框里的内容，和划词取到的文字走同一套分类和渲染 */
   function submit() {
     const text = draft.trim();
     if (text) setSubmitted(text);
@@ -91,13 +93,13 @@ export default function PopupWindow() {
       // 没授权和"没选中"不是一回事：前者给授权引导（见 2.2）
       if (!selection.text && !selection.trusted) return <PermissionView />;
       if (!selection.text) return renderInput('没选中文字，直接输入也一样。');
-      return <ResultView text={selection.text} />;
+      return renderResult(selection.text);
     }
 
     return renderInput();
   }
 
-  /** 输入翻译这一屏：输入框在上，提交的文本显示在下面 */
+  /** 输入翻译这一屏：输入框在上，提交的文本结果显示在下面 */
   function renderInput(note?: string) {
     return (
       <>
@@ -108,24 +110,33 @@ export default function PopupWindow() {
           onChange={setDraft}
           onSubmit={submit}
         />
-        {submitted && <ResultView text={submitted} />}
+        {submitted && renderResult(submitted)}
       </>
     );
   }
 
+  /** 取到 / 输入的文字按 5.1 分类渲染：单词和词组出词卡，句子和中文等 5.1 的翻译界面 */
+  function renderResult(text: string) {
+    if (classifyInput(text) === 'word') {
+      // 划过来的词可能带着引号、逗号（“give up”、went,），查词只用里面的词
+      const word = text.trim().replace(/^[^\p{L}\p{N}]+|[^\p{L}\p{N}]+$/gu, '');
+      // key 用词本身：换一个词整卡重挂载，Tab 的加载状态和"重新生成"次数从头开始
+      return <WordCard key={word} word={word} />;
+    }
+    return <ResultView text={text} />;
+  }
+
   return (
-    <div className="flex min-h-screen flex-col text-neutral-900 dark:bg-neutral-900 dark:text-neutral-100">
+    <div className="flex min-h-screen flex-col bg-page text-ink">
       <header
         data-tauri-drag-region
-        className="flex items-center justify-between border-b border-neutral-200 px-2 py-1.5 dark:border-neutral-700"
+        className="flex items-center justify-between border-b border-line px-2 py-1.5"
       >
         <button
           type="button"
           onClick={() => void togglePinned()}
-          className={`rounded px-2 py-1 text-xs ${
-            pinned
-              ? 'bg-neutral-900 text-white dark:bg-neutral-100 dark:text-neutral-900'
-              : 'text-neutral-500 hover:bg-neutral-100 dark:text-neutral-400 dark:hover:bg-neutral-800'
+          className={`rounded px-2 py-1 text-caption ${
+            pinned ? 'bg-primary text-on-primary' : 'text-ink-soft hover:bg-line'
           }`}
         >
           固定
@@ -133,14 +144,14 @@ export default function PopupWindow() {
         <button
           type="button"
           onClick={() => void getCurrentWindow().hide()}
-          className="rounded px-2 py-1 text-xs text-neutral-500 hover:bg-neutral-100 dark:text-neutral-400 dark:hover:bg-neutral-800"
+          className="rounded px-2 py-1 text-caption text-ink-soft hover:bg-line"
         >
           关闭
         </button>
       </header>
 
       <main className="flex min-h-0 flex-1 flex-col gap-2 p-3">
-        <h1 className="text-base font-semibold">
+        <h1 className="text-body font-semibold">
           {trigger ? POPUP_ACTION_LABELS[trigger.action] : 'AI-dict 弹窗'}
         </h1>
         {renderBody()}
@@ -150,12 +161,12 @@ export default function PopupWindow() {
 }
 
 /**
- * 2.3 的临时界面：把取到的文字（或输入的内容）原样显示出来。
- * 4.1 的分类和 5.x 的单词 / 句子模式接上来之后，这里换成真正的翻译界面。
+ * 句子和中文的临时界面：把文字原样显示出来，5.1 换成翻译界面。
+ * 单词和词组已经走 WordCard（4.2）。
  */
 function ResultView({ text }: { text: string }) {
   return (
-    <p className="min-h-0 flex-1 overflow-y-auto rounded bg-neutral-100 p-2 text-sm break-words whitespace-pre-wrap dark:bg-neutral-800">
+    <p className="min-h-0 flex-1 overflow-y-auto rounded-field border border-line bg-surface p-2.5 text-callout break-words whitespace-pre-wrap text-ink-body">
       {text}
     </p>
   );
@@ -175,7 +186,7 @@ function InputView({
 }) {
   return (
     <div className="flex flex-col gap-2">
-      {note && <p className="text-xs text-neutral-500 dark:text-neutral-400">{note}</p>}
+      {note && <p className="text-caption text-ink-soft">{note}</p>}
       <div className="flex items-start gap-2">
         <textarea
           autoFocus
@@ -193,12 +204,12 @@ function InputView({
             onSubmit();
           }}
           placeholder="输入或粘贴单词、句子"
-          className="min-w-0 flex-1 resize-none rounded border border-neutral-200 bg-transparent px-2 py-1 text-sm outline-none focus:border-neutral-400 dark:border-neutral-700 dark:focus:border-neutral-500"
+          className="min-w-0 flex-1 resize-none rounded-field border border-line bg-surface px-2.5 py-1.5 text-callout text-ink outline-none placeholder:text-ink-faint focus:border-ink-faint"
         />
         <button
           type="button"
           onClick={onSubmit}
-          className="rounded bg-neutral-900 px-2 py-1 text-xs text-white dark:bg-neutral-100 dark:text-neutral-900"
+          className="rounded-field bg-primary px-3 py-1.5 text-callout text-on-primary"
         >
           翻译
         </button>
@@ -228,8 +239,8 @@ function PermissionView() {
 
   return (
     <div className="flex min-h-0 flex-1 flex-col gap-2">
-      <p className="text-sm">{'取词要用 macOS 的「辅助功能」权限，现在还没开。'}</p>
-      <p className="text-xs text-neutral-500 dark:text-neutral-400">
+      <p className="text-callout">{'取词要用 macOS 的「辅助功能」权限，现在还没开。'}</p>
+      <p className="text-caption text-ink-soft">
         {
           '在「系统设置 → 隐私与安全性 → 辅助功能」里打开 AI-dict 的开关（开发期从终端启动时，这个权限算在终端头上），回来再按一次快捷键就行，不用重启。'
         }
@@ -237,11 +248,11 @@ function PermissionView() {
       <button
         type="button"
         onClick={() => void openSettings()}
-        className="self-start rounded bg-neutral-900 px-2 py-1 text-xs text-white dark:bg-neutral-100 dark:text-neutral-900"
+        className="self-start rounded-field bg-primary px-3 py-1.5 text-callout text-on-primary"
       >
         打开系统设置
       </button>
-      {error && <p className="text-xs text-red-600 dark:text-red-400">{error}</p>}
+      {error && <p className="text-caption text-danger">{error}</p>}
     </div>
   );
 }
