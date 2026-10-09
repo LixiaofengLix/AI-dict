@@ -9,8 +9,10 @@ const HAN = /\p{Script=Han}/u;
 /**
  * 英文词：拉丁字母，内部可以有撇号、连字符或数字（don't、well-known、COVID-19），
  * 用来数词数。中文、日文假名之类都不是拉丁字母，不会算进来。
+ * 句子模式的原句分词（features/sentence/splitWords）共用一个形状，两边别各写一份。
  */
-const ENGLISH_WORD = /[\p{Script=Latin}\p{M}\p{N}]+(?:['’-][\p{Script=Latin}\p{M}\p{N}]+)*/gu;
+export const ENGLISH_WORD =
+  /[\p{Script=Latin}\p{M}\p{N}]+(?:['’-][\p{Script=Latin}\p{M}\p{N}]+)*/gu;
 
 /** 句末标点：出现一个就不是词组的形状了 */
 const SENTENCE_END = /[.!?。！？…]/;

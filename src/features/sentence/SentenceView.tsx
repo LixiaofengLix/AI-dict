@@ -4,17 +4,23 @@ import { Skeleton } from '../../components/Skeleton';
 import { TabToolbar } from '../../components/TabToolbar';
 import { TRANSLATION_HEADINGS, translateDirection } from '../../services/ai/prompts/translate';
 import { usePassageAi } from './hooks/usePassageAi';
+import { OriginalSentence } from './OriginalSentence';
 import { type Block, parseSections, splitBold } from './parseSections';
 
 /**
- * 句子模式（DEV_PLAN 5.1）：原句 + 中文翻译 + 句意解释，流式显示。
+ * 句子模式（DEV_PLAN 5.1/5.2）：原句 + 中文翻译 + 句意解释，流式显示。
  * 中文输入走中译英，两节的标题跟着换成"英文翻译"（见 prompts/translate）。
- * 原句里的词还不能点——5.2 再把它拆成可点击的词。
+ * 原句里的词可点（5.2），点中的高亮；点词出词卡是 5.3。
  */
 export function SentenceView({ text }: { text: string }) {
   const [generation, setGeneration] = useState(0);
+  // 点的那个词和它所在的句子：5.2 只用来高亮，5.3 的词卡拿它当语境
+  const [picked, setPicked] = useState<{ word: string; sentence: string; index: number } | null>(
+    null,
+  );
   const result = usePassageAi(text, generation);
-  const headings = TRANSLATION_HEADINGS[translateDirection(text)];
+  const direction = translateDirection(text);
+  const headings = TRANSLATION_HEADINGS[direction];
   const sections = parseSections(result.text ?? '', headings);
   const translation = sections[headings[0]];
   const explanation = sections[headings[1]];
@@ -24,9 +30,16 @@ export function SentenceView({ text }: { text: string }) {
       <TabToolbar onRefresh={() => setGeneration((count) => count + 1)} loading={!result.done} />
       <div className="flex flex-col gap-3">
         {/* 选中的原文：界面的主语，翻译和解释都在讲它 */}
-        <p className="rounded-card border border-line bg-page px-3 py-2 text-footnote leading-relaxed break-words whitespace-pre-wrap text-ink-body">
-          {text}
-        </p>
+        <OriginalSentence
+          text={text}
+          selectedIndex={picked?.index ?? null}
+          // 中文输入只整句翻译，不做句中取词（5.1）：不传回调就是纯文字
+          onWordClick={
+            direction === 'toChinese'
+              ? (word, sentence, index) => setPicked({ word, sentence, index })
+              : undefined
+          }
+        />
         <Section title={headings[0]} blocks={translation} />
         {/* 输出结束（包括失败）仍没有这一节时不显示空卡片 */}
         {explanation !== null || !result.done ? (
