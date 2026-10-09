@@ -1,10 +1,10 @@
+import { AiFailed } from '../../../components/AiFailed';
 import { Skeleton } from '../../../components/Skeleton';
+import { TabToolbar } from '../../../components/TabToolbar';
 import type { AiDictEntry } from '../../../types/ai';
 import { useAiWordResult } from '../hooks/useAiWordResult';
 import { AiDictSenses } from './AiDictSenses';
-import { AiFailed } from './AiFailed';
 import { PhoneticPill } from './PhoneticPill';
-import { TabToolbar } from './TabToolbar';
 
 type Props = {
   word: string;

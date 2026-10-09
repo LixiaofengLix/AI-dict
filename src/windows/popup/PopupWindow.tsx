@@ -4,6 +4,7 @@ import { getCurrentWindow } from '@tauri-apps/api/window';
 import { WordCard } from '../../features/lookup/WordCard';
 import { AiNotConfigured } from '../../features/lookup/components/AiNotConfigured';
 import { useAiConfigured } from '../../features/lookup/hooks/useAiConfigured';
+import { SentenceView } from '../../features/sentence/SentenceView';
 import {
   POPUP_ACTION_LABELS,
   POPUP_TRIGGER_EVENT,
@@ -133,7 +134,7 @@ export default function PopupWindow() {
     );
   }
 
-  /** 取到 / 输入的文字按 5.1 分类渲染：单词和词组出词卡，句子和中文等 5.1 的翻译界面 */
+  /** 取到 / 输入的文字按 5.1 分类渲染：单词和词组出词卡，句子和中文出翻译界面 */
   function renderResult(text: string) {
     // 配置还在读（毫秒级）时先空着：没配置的情况 renderBody 已经拦下了，这里只是别闪一下
     if (configured !== true) return null;
@@ -143,7 +144,8 @@ export default function PopupWindow() {
       // key 用词本身：换一个词整卡重挂载，Tab 的加载状态和"重新生成"次数从头开始
       return <WordCard key={word} word={word} />;
     }
-    return <ResultView text={text} />;
+    // 同理：换一段文字整段重挂载，流式内容和"重新生成"次数不残留
+    return <SentenceView key={text} text={text} />;
   }
 
   return (
@@ -177,18 +179,6 @@ export default function PopupWindow() {
         {renderBody()}
       </main>
     </div>
-  );
-}
-
-/**
- * 句子和中文的临时界面：把文字原样显示出来，5.1 换成翻译界面。
- * 单词和词组已经走 WordCard（4.2）。
- */
-function ResultView({ text }: { text: string }) {
-  return (
-    <p className="min-h-0 flex-1 overflow-y-auto rounded-field border border-line bg-surface p-2.5 text-callout break-words whitespace-pre-wrap text-ink-body">
-      {text}
-    </p>
   );
 }
 

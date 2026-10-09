@@ -5,7 +5,7 @@ import { contextMeaningMessages } from '../prompts/contextMeaning';
 import { parseCollocations } from '../prompts/collocations';
 import { extractJsonObject } from '../prompts/json';
 import { passageBlock } from '../prompts/passage';
-import { translateMessages } from '../prompts/translate';
+import { TRANSLATION_HEADINGS, translateDirection, translateMessages } from '../prompts/translate';
 import { parseWordCluster } from '../prompts/wordCluster';
 
 const SENSE = {
@@ -214,9 +214,10 @@ describe('translateMessages', () => {
     before: 'I had walked into that reading-room a happy, healthy man.',
     after: 'Students would have no need to walk the hospitals.',
   };
+  const chinese = { text: '我差点迟到。', before: '', after: '' };
 
   it('上下文放在选中内容前后，没有上下文时省略', () => {
-    const messages = translateMessages(input);
+    const messages = translateMessages(input, 'toChinese');
     const user = messages[messages.length - 1].content;
     expect(user.indexOf('【上文】')).toBeLessThan(user.indexOf('【选中的内容】'));
     expect(user.indexOf('【选中的内容】')).toBeLessThan(user.indexOf('【下文】'));
@@ -225,11 +226,32 @@ describe('translateMessages', () => {
     expect(bare).toBe('【选中的内容】\nI was a hospital in myself.');
   });
 
-  it('要中文翻译和句意解释两节', () => {
-    const messages = translateMessages(input);
+  it('英译中：要中文翻译和句意解释两节，标题就是界面按它解析的那两个', () => {
+    const messages = translateMessages(input, 'toChinese');
+    expect(messages[0].content).toContain('英译中');
     const translate = messages[messages.length - 1].content;
-    expect(translate).toContain('## 中文翻译');
-    expect(translate).toContain('## 句意解释');
+    expect(translate).toContain(`## ${TRANSLATION_HEADINGS.toChinese[0]}`);
+    expect(translate).toContain(`## ${TRANSLATION_HEADINGS.toChinese[1]}`);
     expect(translate).not.toContain('## 语法要点');
+  });
+
+  it('中译英：换一套说法，要英文翻译，不是逐字直译', () => {
+    const messages = translateMessages(chinese, 'toEnglish');
+    expect(messages[0].content).toContain('中译英');
+    const translate = messages[messages.length - 1].content;
+    expect(translate).toContain('【选中的内容】\n我差点迟到。');
+    expect(translate).toContain(`## ${TRANSLATION_HEADINGS.toEnglish[0]}`);
+    expect(translate).toContain(`## ${TRANSLATION_HEADINGS.toEnglish[1]}`);
+    expect(translate).toContain('地道的英文');
+    expect(translate).not.toContain('## 中文翻译');
+  });
+});
+
+describe('translateDirection', () => {
+  it('主要是中文的走中译英，其余走英译中', () => {
+    expect(translateDirection('我差点迟到。')).toBe('toEnglish');
+    expect(translateDirection('他说这张 photo 很好看')).toBe('toEnglish');
+    expect(translateDirection('I was a hospital in myself.')).toBe('toChinese');
+    expect(translateDirection("It's not my cup of tea.")).toBe('toChinese');
   });
 });

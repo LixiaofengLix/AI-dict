@@ -1,10 +1,10 @@
 import type { ReactNode } from 'react';
+import { AiFailed } from '../../../components/AiFailed';
+import { TabToolbar } from '../../../components/TabToolbar';
 import type { WordCluster, WordForm } from '../../../types/ai';
 import { useAiWordResult } from '../hooks/useAiWordResult';
-import { AiFailed } from './AiFailed';
 import { ExampleBlock } from './ExampleBlock';
 import { ListSkeleton } from './ListSkeleton';
-import { TabToolbar } from './TabToolbar';
 
 type Props = {
   word: string;

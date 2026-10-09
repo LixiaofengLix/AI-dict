@@ -1,4 +1,5 @@
 import type { AiConfig } from '../../../types/ai';
+import type { TranslateDirection } from '../prompts/translate';
 
 import { mockLemma } from './aiWords';
 
@@ -50,8 +51,17 @@ const TRANSLATIONS: Record<string, string> = {
 
 const preview = (text: string) => (text.length > 60 ? `${text.slice(0, 60)}…` : text);
 
-/** 翻译 Tab 的回答格式：简单 Markdown，分"## 中文翻译"和"## 句意解释"两节 */
-export function mockTranslation(text: string): string {
+/** 翻译的回答格式：简单 Markdown，分"## 中文翻译 / ## 英文翻译"和"## 句意解释"两节 */
+export function mockTranslation(text: string, direction: TranslateDirection): string {
+  if (direction === 'toEnglish') {
+    return [
+      '## 英文翻译',
+      `（mock translation）${text}`,
+      '',
+      '## 句意解释',
+      `（mock）这里会说明译文里为什么这么选词："${preview(text)}"`,
+    ].join('\n');
+  }
   const key = text.trim();
   return [
     '## 中文翻译',

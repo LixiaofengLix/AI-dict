@@ -136,6 +136,16 @@ describe('aiImpl.translate', () => {
     expect(user).toContain('【选中的内容】\nI was a hospital in myself.');
     expect(user).not.toContain('【下文】');
   });
+
+  it('中文输入走中译英', async () => {
+    mock.config = CONFIG;
+    mock.chat.mockResolvedValue('I was almost late.\n');
+    const text = await aiImpl.translate({ text: '我差点迟到。', before: '', after: '' });
+    expect(text).toBe('I was almost late.');
+    const messages = mock.chat.mock.calls[0][1];
+    expect(messages[0].content).toContain('中译英');
+    expect(messages[messages.length - 1].content).toContain('## 英文翻译');
+  });
 });
 
 describe('翻译缓存', () => {

@@ -7,7 +7,7 @@ import { AiError, describeAiError } from './errors';
 import { aiDictionaryMessages, parseAiDictionary } from './prompts/aiDictionary';
 import { collocationsMessages, parseCollocations } from './prompts/collocations';
 import { contextMeaningMessages } from './prompts/contextMeaning';
-import { translateMessages } from './prompts/translate';
+import { translateDirection, translateMessages } from './prompts/translate';
 import { parseWordCluster, wordClusterMessages } from './prompts/wordCluster';
 import type { AiService, GenerateOptions, PassageContext, StreamOptions } from './types';
 
@@ -180,7 +180,10 @@ export const aiImpl: AiService = {
   },
 
   translate(input, options = {}) {
-    return cachedPassageText('translate', input, options, () => translateMessages(input));
+    // 方向由选中文字本身定（5.1），同一段文字的方向不会变，缓存仍按文字存
+    return cachedPassageText('translate', input, options, () =>
+      translateMessages(input, translateDirection(input.text)),
+    );
   },
 
   describeError: describeAiError,

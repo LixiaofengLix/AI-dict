@@ -36,7 +36,8 @@ export interface AiService {
   wordCluster(input: WordContext, options?: GenerateOptions): Promise<WordCluster>;
   collocations(input: WordContext, options?: GenerateOptions): Promise<Collocation[]>;
   /**
-   * 翻译（流式）：简单 Markdown，分 "## 中文翻译" 和 "## 句意解释" 两节。
+   * 翻译（流式）：简单 Markdown，分"## 中文翻译（中文输入时为 ## 英文翻译）"和"## 句意解释"两节。
+   * 方向按输入判断，见 prompts/translate 的 translateDirection。
    */
   translate(input: PassageContext, options?: StreamOptions): Promise<string>;
   /** 以上方法失败时，给用户看的中文原因 */

@@ -11,6 +11,7 @@ import type { AiDictEntry, Collocation, WordCluster } from '../../types/ai';
 
 import { describeAiError } from './errors';
 import { mockLatency } from './mockLatency';
+import { translateDirection } from './prompts/translate';
 import type { AiService, StreamOptions } from './types';
 
 const FIRST_TOKEN_MS = 600;
@@ -114,7 +115,7 @@ export const aiMock: AiService = {
   },
 
   translate({ text }, options) {
-    return streamText(mockTranslation(text), options);
+    return streamText(mockTranslation(text, translateDirection(text)), options);
   },
 
   describeError: describeAiError,
