@@ -2,9 +2,12 @@ import { useEffect, useRef, useState } from 'react';
 import { listen } from '@tauri-apps/api/event';
 import { getCurrentWindow } from '@tauri-apps/api/window';
 import { WordCard } from '../../features/lookup/WordCard';
+import { AiNotConfigured } from '../../features/lookup/components/AiNotConfigured';
+import { useAiConfigured } from '../../features/lookup/hooks/useAiConfigured';
 import {
   POPUP_ACTION_LABELS,
   POPUP_TRIGGER_EVENT,
+  showMainWindow,
   type PopupTriggerPayload,
 } from '../../services/window';
 import {
@@ -27,6 +30,8 @@ export default function PopupWindow() {
   const [pinned, setPinned] = useState(false);
   // 失焦回调里要读最新的固定状态，用 ref 同步一份
   const pinnedRef = useRef(false);
+  // 每次呼出重新读一遍 AI 配置：用户刚在设置页填完 Key 回来，这里要看到新值
+  const configured = useAiConfigured(summonCount);
 
   useEffect(() => {
     const unlisten = listen<PopupTriggerPayload>(POPUP_TRIGGER_EVENT, (event) => {
@@ -85,6 +90,19 @@ export default function PopupWindow() {
   function renderBody() {
     if (!trigger) return null;
 
+    // 没配置 AI 时整个弹窗换成引导（4.3）：词卡和翻译都离不开 AI，给输入框也没用。
+    // 放在最前面，取词失败、没选中这些提示都不用提了
+    if (configured === false) {
+      return (
+        <AiNotConfigured
+          onOpenSettings={() => {
+            // 主窗口开着配置页；弹窗自己收起来，免得固定着挡在旁边
+            void showMainWindow().then(() => getCurrentWindow().hide());
+          }}
+        />
+      );
+    }
+
     if (trigger.action === 'selection') {
       const selection = trigger.selection;
       if (!selection) return null;
@@ -117,6 +135,8 @@ export default function PopupWindow() {
 
   /** 取到 / 输入的文字按 5.1 分类渲染：单词和词组出词卡，句子和中文等 5.1 的翻译界面 */
   function renderResult(text: string) {
+    // 配置还在读（毫秒级）时先空着：没配置的情况 renderBody 已经拦下了，这里只是别闪一下
+    if (configured !== true) return null;
     if (classifyInput(text) === 'word') {
       // 划过来的词可能带着引号、逗号（“give up”、went,），查词只用里面的词
       const word = text.trim().replace(/^[^\p{L}\p{N}]+|[^\p{L}\p{N}]+$/gu, '');

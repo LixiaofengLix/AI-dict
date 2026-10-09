@@ -82,6 +82,19 @@ export async function showPopup(action: PopupAction): Promise<void> {
   await popup.setFocus();
 }
 
+/**
+ * 把主窗口叫出来（弹窗里的"去设置"、启动时没配置 AI 都走这里）。
+ * 窗口是隐藏而不是销毁的，和 Rust 的 show_window 一样先取消最小化再显示。
+ */
+export async function showMainWindow(): Promise<void> {
+  const main = await WebviewWindow.getByLabel('main');
+  if (!main) return;
+  // 没最小化时调它也无妨，失败不影响后面两步，忽略掉
+  await main.unminimize().catch(() => {});
+  await main.show();
+  await main.setFocus();
+}
+
 /** 取当前选中的文字，失败时把错误信息一起带给弹窗 */
 async function takeSelection(): Promise<PopupTriggerPayload> {
   try {
