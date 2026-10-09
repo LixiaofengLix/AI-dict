@@ -3,18 +3,18 @@ import { AiFailed } from '../../components/AiFailed';
 import { Skeleton } from '../../components/Skeleton';
 import { TabToolbar } from '../../components/TabToolbar';
 import { TRANSLATION_HEADINGS, translateDirection } from '../../services/ai/prompts/translate';
+import { WordPanel } from '../lookup/WordPanel';
 import { usePassageAi } from './hooks/usePassageAi';
 import { OriginalSentence } from './OriginalSentence';
 import { type Block, parseSections, splitBold } from './parseSections';
 
 /**
- * 句子模式（DEV_PLAN 5.1/5.2）：原句 + 中文翻译 + 句意解释，流式显示。
- * 中文输入走中译英，两节的标题跟着换成"英文翻译"（见 prompts/translate）。
- * 原句里的词可点（5.2），点中的高亮；点词出词卡是 5.3。
+ * 句子模式（DEV_PLAN 5.1~5.3）：原句（词可点）+ 译文，点词后译文区换成词卡。
+ * 中文输入走中译英，两节的标题跟着换成"英文翻译"（见 prompts/translate），词也不可点。
  */
 export function SentenceView({ text }: { text: string }) {
   const [generation, setGeneration] = useState(0);
-  // 点的那个词和它所在的句子：5.2 只用来高亮，5.3 的词卡拿它当语境
+  // 点的那个词、它所在的句子和它在原句里的位置（只有它高亮，同词的另一处不高亮）
   const [picked, setPicked] = useState<{ word: string; sentence: string; index: number } | null>(
     null,
   );
@@ -26,27 +26,43 @@ export function SentenceView({ text }: { text: string }) {
   const explanation = sections[headings[1]];
 
   return (
-    <div className="min-h-0 flex-1 overflow-y-auto">
-      <TabToolbar onRefresh={() => setGeneration((count) => count + 1)} loading={!result.done} />
-      <div className="flex flex-col gap-3">
-        {/* 选中的原文：界面的主语，翻译和解释都在讲它 */}
-        <OriginalSentence
-          text={text}
-          selectedIndex={picked?.index ?? null}
-          // 中文输入只整句翻译，不做句中取词（5.1）：不传回调就是纯文字
-          onWordClick={
-            direction === 'toChinese'
-              ? (word, sentence, index) => setPicked({ word, sentence, index })
-              : undefined
-          }
-        />
-        <Section title={headings[0]} blocks={translation} />
-        {/* 输出结束（包括失败）仍没有这一节时不显示空卡片 */}
-        {explanation !== null || !result.done ? (
-          <Section title={headings[1]} blocks={explanation} muted />
-        ) : null}
-        {result.error ? <AiFailed message={result.error} onRetry={result.retry} /> : null}
+    <div className="flex min-h-0 flex-1 flex-col gap-3">
+      {/* 原句始终可见（5.2 规则 1）：点完词还能接着点别的；一段话太长时它自己滚 */}
+      <OriginalSentence
+        text={text}
+        selectedIndex={picked?.index ?? null}
+        // 中文输入只整句翻译，不做句中取词（5.1）：不传回调就是纯文字
+        onWordClick={
+          direction === 'toChinese'
+            ? (word, sentence, index) => setPicked({ word, sentence, index })
+            : undefined
+        }
+      />
+
+      {/* 译文不卸载、只是藏起来：点词时还在流式的输出不白跑，返回译文接着看 */}
+      <div className={`min-h-0 flex-1 flex-col ${picked ? 'hidden' : 'flex'}`}>
+        <TabToolbar onRefresh={() => setGeneration((count) => count + 1)} loading={!result.done} />
+        <div className="min-h-0 flex-1 overflow-y-auto">
+          <div className="flex flex-col gap-3">
+            <Section title={headings[0]} blocks={translation} />
+            {/* 输出结束（包括失败）仍没有这一节时不显示空卡片 */}
+            {explanation !== null || !result.done ? (
+              <Section title={headings[1]} blocks={explanation} muted />
+            ) : null}
+            {result.error ? <AiFailed message={result.error} onRetry={result.retry} /> : null}
+          </div>
+        </div>
       </div>
+
+      {/* 换词整块重挂载：上一个词还在跑的请求跟着取消（5.2 规则 1） */}
+      {picked ? (
+        <WordPanel
+          key={picked.word}
+          word={picked.word}
+          sentence={picked.sentence}
+          onBack={() => setPicked(null)}
+        />
+      ) : null}
     </div>
   );
 }

@@ -20,7 +20,7 @@ export function OriginalSentence({ text, selectedIndex = null, onWordClick }: Pr
   const parts = useMemo(() => (onWordClick ? splitWords(text) : []), [text, onWordClick]);
 
   return (
-    <p className="rounded-card border border-line bg-page px-3 py-2 text-footnote leading-relaxed break-words whitespace-pre-wrap text-ink-body">
+    <p className="max-h-40 shrink-0 overflow-y-auto rounded-card border border-line bg-page px-3 py-2 text-footnote leading-relaxed break-words whitespace-pre-wrap text-ink-body">
       {onWordClick
         ? parts.map((part, index) =>
             part.kind === 'word' ? (
