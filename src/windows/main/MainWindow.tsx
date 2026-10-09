@@ -1,12 +1,36 @@
 import { useEffect, useState } from 'react';
+import { listen } from '@tauri-apps/api/event';
 import AiConfigPage from '../../features/settings/AiConfigPage';
+import { VocabularyPage } from '../../features/vocabulary/VocabularyPage';
 import { aiImpl } from '../../services/ai/impl';
 import { registerShortcuts, type FailedShortcut } from '../../services/shortcut';
-import { POPUP_ACTION_LABELS, showMainWindow } from '../../services/window';
+import {
+  MAIN_PAGE_EVENT,
+  POPUP_ACTION_LABELS,
+  showMainWindow,
+  type MainPage,
+  type MainPagePayload,
+} from '../../services/window';
 
-// 主窗口：设置（3.4 起是 AI 配置页，7.1 补快捷键、口音、开机启动；6.2 加生词本）。1.1 起从托盘打开
+const PAGES: readonly { value: MainPage; label: string }[] = [
+  { value: 'vocabulary', label: '生词本' },
+  { value: 'settings', label: '设置' },
+];
+
+// 主窗口：生词本（6.2）、设置（3.4 起是 AI 配置页，7.1 补快捷键、口音、开机启动）。1.1 起从托盘打开
 export default function MainWindow() {
+  const [page, setPage] = useState<MainPage>('vocabulary');
   const [failedShortcuts, setFailedShortcuts] = useState<FailedShortcut[]>([]);
+
+  useEffect(() => {
+    // 托盘菜单点"生词本 / 设置"时切到对应页（事件名和 Rust 侧一致）
+    const unlisten = listen<MainPagePayload>(MAIN_PAGE_EVENT, (event) => {
+      setPage(event.payload.page);
+    });
+    return () => {
+      void unlisten.then((fn) => fn());
+    };
+  }, []);
 
   useEffect(() => {
     void (async () => {
@@ -19,6 +43,7 @@ export default function MainWindow() {
       }
       // 还没配置 AI 时启动就把主窗口打开（4.3）：首次使用从填 Key 开始，配好之后不再自动弹
       if (!(await aiImpl.isConfigured())) {
+        setPage('settings');
         await showMainWindow();
       }
     })();
@@ -39,7 +64,29 @@ export default function MainWindow() {
         </div>
       )}
 
-      <AiConfigPage />
+      <nav role="tablist" aria-label="主窗口" className="flex gap-1 border-b border-line px-5 pt-3">
+        {PAGES.map(({ value, label }) => {
+          const selected = value === page;
+          return (
+            <button
+              key={value}
+              type="button"
+              role="tab"
+              aria-selected={selected}
+              onClick={() => setPage(value)}
+              className={`-mb-px border-b-2 px-3 pb-2 text-callout ${
+                selected
+                  ? 'border-primary font-medium text-ink'
+                  : 'border-transparent text-ink-soft hover:text-ink'
+              }`}
+            >
+              {label}
+            </button>
+          );
+        })}
+      </nav>
+
+      {page === 'vocabulary' ? <VocabularyPage /> : <AiConfigPage />}
     </main>
   );
 }

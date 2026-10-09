@@ -97,8 +97,8 @@ export default function PopupWindow() {
       return (
         <AiNotConfigured
           onOpenSettings={() => {
-            // 主窗口开着配置页；弹窗自己收起来，免得固定着挡在旁边
-            void showMainWindow().then(() => getCurrentWindow().hide());
+            // 主窗口切到设置页；弹窗自己收起来，免得固定着挡在旁边
+            void showMainWindow('settings').then(() => getCurrentWindow().hide());
           }}
         />
       );

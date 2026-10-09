@@ -77,7 +77,16 @@ pub fn run() {
                             serde_json::json!({ "action": "input" }),
                         );
                     }
-                    "vocabulary" | "settings" => show_window(app, "main"),
+                    "vocabulary" | "settings" => {
+                        // 先告诉主窗口切到哪页再显示，免得先闪一下原来那页；
+                        // 菜单项的 id 直接当页名（和 src/services/window.ts 的 MainPage 一致）
+                        let _ = app.emit_to(
+                            "main",
+                            "main-page",
+                            serde_json::json!({ "page": event.id.as_ref() }),
+                        );
+                        show_window(app, "main");
+                    }
                     "quit" => app.exit(0),
                     _ => {}
                 })

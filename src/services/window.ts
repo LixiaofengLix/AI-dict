@@ -38,6 +38,19 @@ export interface PopupTriggerPayload {
   selection?: SelectionResult;
 }
 
+/** 主窗口的两个页面（6.2 加的生词本） */
+export type MainPage = 'vocabulary' | 'settings';
+
+/**
+ * 告诉主窗口切到哪一页。事件名和 payload 要和 src-tauri/src/lib.rs 里托盘那处保持一致，
+ * 托盘菜单项的 id 就是这里的页名。
+ */
+export const MAIN_PAGE_EVENT = 'main-page';
+
+export interface MainPagePayload {
+  page: MainPage;
+}
+
 function workAreaOf(monitor: Monitor): Rect {
   return {
     x: monitor.workArea.position.x,
@@ -84,11 +97,15 @@ export async function showPopup(action: PopupAction): Promise<void> {
 
 /**
  * 把主窗口叫出来（弹窗里的"去设置"、启动时没配置 AI 都走这里）。
+ * 传了 page 就先让主窗口切页再显示，免得先闪一下原来那页。
  * 窗口是隐藏而不是销毁的，和 Rust 的 show_window 一样先取消最小化再显示。
  */
-export async function showMainWindow(): Promise<void> {
+export async function showMainWindow(page?: MainPage): Promise<void> {
   const main = await WebviewWindow.getByLabel('main');
   if (!main) return;
+  if (page) {
+    await emitTo('main', MAIN_PAGE_EVENT, { page } satisfies MainPagePayload);
+  }
   // 没最小化时调它也无妨，失败不影响后面两步，忽略掉
   await main.unminimize().catch(() => {});
   await main.show();

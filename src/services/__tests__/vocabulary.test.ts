@@ -8,7 +8,15 @@ vi.mock('../db', () => ({
   getDb: async () => memory.db,
 }));
 
-import { isStarred, star, unstar, type StarDetails } from '../vocabulary';
+import {
+  getWordDetail,
+  isStarred,
+  listWords,
+  removeWord,
+  star,
+  unstar,
+  type StarDetails,
+} from '../vocabulary';
 
 const SENTENCE_A = 'The alarm went off just as I was about to leave.';
 const SENTENCE_B = 'The milk went off, so I poured it away.';
@@ -116,5 +124,41 @@ describe('vocabulary', () => {
     await star(details({ contextMeaning: null }));
 
     expect(contextRows()).toEqual([{ query: 'went', sentence: SENTENCE_A, context_meaning: null }]);
+  });
+
+  it('列表按收藏时间倒序，带语境条数', async () => {
+    // star 里每插一条就取一次 Date.now，让每次调用都往后走一秒，排序就确定了
+    let t = 1_000;
+    const now = vi.spyOn(Date, 'now').mockImplementation(() => (t += 1_000));
+    await star(details());
+    await star(
+      details({ word: 'run', query: 'ran', sentence: 'He ran home.', briefMeaning: 'v. 跑' }),
+    );
+    await star(details({ sentence: SENTENCE_B }));
+    now.mockRestore();
+
+    const list = await listWords();
+    expect(list.map((word) => word.word)).toEqual(['run', 'go']);
+    expect(list[0]).toMatchObject({ word: 'run', briefMeaning: 'v. 跑', contextCount: 1 });
+    expect(list[1]).toMatchObject({ word: 'go', briefMeaning: 'v. 去；走', contextCount: 2 });
+  });
+
+  it('详情返回词条和全部语境（新的在前）；删掉的词返回 null', async () => {
+    let t = 1_000;
+    const now = vi.spyOn(Date, 'now').mockImplementation(() => (t += 1_000));
+    await star(details());
+    await star(details({ sentence: SENTENCE_B, contextMeaning: '变质。' }));
+    now.mockRestore();
+
+    const id = (await listWords())[0]?.id ?? '';
+    const detail = await getWordDetail(id);
+    expect(detail).toMatchObject({ word: 'go', phonetic: 'ɡəʊ', briefMeaning: 'v. 去；走' });
+    expect(detail?.contexts.map((context) => context.sentence)).toEqual([SENTENCE_B, SENTENCE_A]);
+    expect(detail?.contexts[0]?.contextMeaning).toBe('变质。');
+
+    await removeWord(id);
+    await expect(getWordDetail(id)).resolves.toBeNull();
+    expect(wordRows()).toHaveLength(0);
+    expect(contextRows()).toHaveLength(0);
   });
 });
