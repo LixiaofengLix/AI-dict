@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { listen } from '@tauri-apps/api/event';
 import { getCurrentWindow } from '@tauri-apps/api/window';
-import { WordCard } from '../../features/lookup/WordCard';
+import { WordPanel } from '../../features/lookup/WordPanel';
 import { AiNotConfigured } from '../../features/lookup/components/AiNotConfigured';
 import { useAiConfigured } from '../../features/lookup/hooks/useAiConfigured';
 import { SentenceView } from '../../features/sentence/SentenceView';
@@ -141,8 +141,9 @@ export default function PopupWindow() {
     if (classifyInput(text) === 'word') {
       // 划过来的词可能带着引号、逗号（“give up”、went,），查词只用里面的词
       const word = text.trim().replace(/^[^\p{L}\p{N}]+|[^\p{L}\p{N}]+$/gu, '');
+      // 单词模式：没有原句，语境释义和它所在的卡片都不出现（4.2）
       // key 用词本身：换一个词整卡重挂载，Tab 的加载状态和"重新生成"次数从头开始
-      return <WordCard key={word} word={word} />;
+      return <WordPanel key={word} word={word} sentence="" />;
     }
     // 同理：换一段文字整段重挂载，流式内容和"重新生成"次数不残留
     return <SentenceView key={text} text={text} />;

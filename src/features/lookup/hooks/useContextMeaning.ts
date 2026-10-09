@@ -9,6 +9,7 @@ const PENDING: ContextMeaning = { text: null, error: null };
 /**
  * AI 语境释义（这个词在这句话里是什么意思），流式更新；text 为 null 表示首包还没到。
  * generation 每加 1 就跳过缓存重新生成一次——失败重试也走它（失败的结果不会进缓存）。
+ * 句子为空（单词模式，4.2）时不请求：没有语境可解释。
  */
 export function useContextMeaning(
   word: string,
@@ -19,6 +20,9 @@ export function useContextMeaning(
   const [current, setCurrent] = useState<{ key: string; state: ContextMeaning } | null>(null);
 
   useEffect(() => {
+    if (!sentence) {
+      return;
+    }
     const controller = new AbortController();
     const key = JSON.stringify([word, sentence, generation]);
     let latest: string | null = null;

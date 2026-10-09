@@ -9,7 +9,7 @@ export function PhoneticPill({ word, phonetic }: { word: string; phonetic: strin
       type="button"
       onClick={() => speak(word)}
       aria-label={phonetic ? `发音 /${phonetic}/` : '发音'}
-      className="flex h-8 items-center gap-2 self-start rounded-full bg-ink px-4 text-callout text-page hover:opacity-90"
+      className="flex h-8 shrink-0 items-center gap-2 rounded-full bg-ink px-4 text-callout text-page hover:opacity-90"
     >
       <span>{phonetic ? `/${phonetic}/` : '发音'}</span>
       <svg

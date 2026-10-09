@@ -2,27 +2,22 @@ import { AiFailed } from '../../../components/AiFailed';
 import { Skeleton } from '../../../components/Skeleton';
 import { TabToolbar } from '../../../components/TabToolbar';
 import type { AiDictEntry } from '../../../types/ai';
-import { useAiWordResult } from '../hooks/useAiWordResult';
+import type { AiResult } from '../hooks/useAiWordResult';
 import { AiDictSenses } from './AiDictSenses';
-import { PhoneticPill } from './PhoneticPill';
 
 type Props = {
-  word: string;
-  /** 原句，单词模式下为空字符串；只用来帮 AI 判断原形和词性 */
-  sentence: string;
-  generation: number;
+  /** AI 词典的结果，由词卡顶层请求（词头和收藏星标也要用，见 6.1） */
+  result: AiResult<AiDictEntry>;
   onRefresh: () => void;
 };
 
-/** AI 词典 Tab：原形、音标、考试标签，下面是词典式的中英释义 */
-export function AiDictTab({ word, sentence, generation, onRefresh }: Props) {
-  const result = useAiWordResult('aiDictionary', word, sentence, generation);
-
+/** AI 词典 Tab：考试标签 + 词典式的中英释义；原形、音标、发音在词头里 */
+export function AiDictTab({ result, onRefresh }: Props) {
   return (
     <div>
       <TabToolbar onRefresh={onRefresh} loading={result.status === 'loading'} />
       {result.status === 'done' ? (
-        <EntryView query={word} entry={result.data} />
+        <EntryView entry={result.data} />
       ) : result.status === 'error' ? (
         <AiFailed message={result.message} onRetry={onRefresh} />
       ) : (
@@ -32,30 +27,22 @@ export function AiDictTab({ word, sentence, generation, onRefresh }: Props) {
   );
 }
 
-function EntryView({ query, entry }: { query: string; entry: AiDictEntry }) {
-  // 查的是变形（went）时说明它对应哪个原形，不区分大小写
-  const inflected = query.toLowerCase() !== entry.word.toLowerCase();
-
+function EntryView({ entry }: { entry: AiDictEntry }) {
   return (
     <div className="px-1">
-      <p className="text-title font-semibold text-ink">{entry.word}</p>
-      {inflected ? (
-        <p className="mt-0.5 text-footnote text-ink-soft">
-          {query} 是 {entry.word} 的变形
-        </p>
+      {entry.tags.length > 0 ? (
+        <div className="mb-3 flex flex-wrap items-center gap-3">
+          {entry.tags.map((tag) => (
+            <span
+              key={tag}
+              className="rounded-full border border-line px-2.5 py-0.5 text-caption text-ink-soft"
+            >
+              {tag}
+            </span>
+          ))}
+        </div>
       ) : null}
-      <div className="mt-3 flex flex-wrap items-center gap-3">
-        <PhoneticPill word={entry.word} phonetic={entry.phonetic} />
-        {entry.tags.map((tag) => (
-          <span
-            key={tag}
-            className="rounded-full border border-line px-2.5 py-0.5 text-caption text-ink-soft"
-          >
-            {tag}
-          </span>
-        ))}
-      </div>
-      <p className="mt-6 mb-3 text-caption font-medium tracking-wide text-ink-faint">释义</p>
+      <p className="mb-3 text-caption font-medium tracking-wide text-ink-faint">释义</p>
       <AiDictSenses senses={entry.senses} />
     </div>
   );
@@ -64,9 +51,8 @@ function EntryView({ query, entry }: { query: string; entry: AiDictEntry }) {
 function EntrySkeleton() {
   return (
     <div className="flex flex-col gap-3 px-1">
-      <Skeleton width="45%" height={26} />
-      <Skeleton width={140} height={32} className="rounded-full" />
-      <div className="mt-4 flex flex-col gap-3">
+      <Skeleton width={140} height={24} className="rounded-full" />
+      <div className="mt-1 flex flex-col gap-3">
         <Skeleton width="40%" />
         <Skeleton />
         <Skeleton width="80%" />
