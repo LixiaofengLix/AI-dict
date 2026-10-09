@@ -1,9 +1,27 @@
 import type { AiConfig, ThinkingMode } from '../types/ai';
 import type { Accent } from '../types/settings';
+import { isMac } from '../utils/platform';
 import { getDb } from './db';
 
 /** settings 表按 key 存一行，value 是 JSON。AI 配置（含 API Key）都在这行里 */
 const KEY_AI = 'ai';
+
+/** 两个全局快捷键（7.1 起可改），值如 Alt+D */
+const KEY_SHORTCUTS = 'shortcuts';
+
+/** 发音口音 */
+const KEY_ACCENT = 'accent';
+
+/** 两个全局快捷键，和 utils 里的 PopupAction 一一对应 */
+export type Shortcuts = { selection: string; input: string };
+
+/**
+ * 首次启动的默认快捷键。
+ * macOS 用 Option 组合；Windows 上 Alt+字母会被菜单和地址栏吃掉，所以再加 Ctrl。
+ */
+export const DEFAULT_SHORTCUTS: Shortcuts = isMac
+  ? { selection: 'Alt+D', input: 'Alt+S' }
+  : { selection: 'Ctrl+Alt+D', input: 'Ctrl+Alt+S' };
 
 const THINKING_MODES: readonly ThinkingMode[] = ['none', 'low', 'high', 'max'];
 
@@ -64,10 +82,38 @@ export async function setAiConfig(config: AiConfig): Promise<void> {
   await write(KEY_AI, config);
 }
 
+/** 存储里缺失或写坏的字段逐个退回默认快捷键 */
+function toShortcuts(stored: unknown): Shortcuts {
+  const s = (typeof stored === 'object' && stored !== null ? stored : {}) as Record<
+    string,
+    unknown
+  >;
+  const pick = (value: unknown, fallback: string) =>
+    typeof value === 'string' && value.trim() ? value.trim() : fallback;
+  return {
+    selection: pick(s.selection, DEFAULT_SHORTCUTS.selection),
+    input: pick(s.input, DEFAULT_SHORTCUTS.input),
+  };
+}
+
+/** 两个全局快捷键。没设置过时用默认值 */
+export async function getShortcuts(): Promise<Shortcuts> {
+  return toShortcuts(await read(KEY_SHORTCUTS));
+}
+
+export async function setShortcuts(shortcuts: Shortcuts): Promise<void> {
+  await write(KEY_SHORTCUTS, shortcuts);
+}
+
 /**
- * 单词发音和音标的口音。设置页（7.1）才做这个开关，先固定美音。
- * AI 词典按口音缓存音标，所以这个值以后要进缓存的 key（见 ai/cache.ts 的 wordKey）。
+ * 单词发音和音标的口音。
+ * AI 词典按口音缓存音标（见 ai/cache.ts 的 wordKey），换口音后音标会重新请求。
  */
 export async function getAccent(): Promise<Accent> {
-  return 'us';
+  const stored = await read(KEY_ACCENT);
+  return stored === 'uk' || stored === 'us' ? stored : 'us';
+}
+
+export async function setAccent(accent: Accent): Promise<void> {
+  await write(KEY_ACCENT, accent);
 }

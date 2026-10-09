@@ -19,7 +19,17 @@ vi.mock('@tauri-apps/plugin-sql', () => ({
   },
 }));
 
-import { getAiConfig, setAiConfig } from '../settings';
+// 默认快捷键按平台不同，测试里固定成 macOS，断言才稳定
+vi.mock('../../utils/platform', () => ({ isMac: true }));
+
+import {
+  getAccent,
+  getAiConfig,
+  getShortcuts,
+  setAccent,
+  setAiConfig,
+  setShortcuts,
+} from '../settings';
 
 /** 没配置过时的样子 */
 const EMPTY: AiConfig = { apiKey: '', baseUrl: '', model: '', thinking: 'high' };
@@ -67,5 +77,46 @@ describe('AI 配置', () => {
 
     fake.rows.set('ai', 'null');
     await expect(getAiConfig()).resolves.toEqual(EMPTY);
+  });
+});
+
+describe('快捷键设置', () => {
+  it('没设置过时给默认值', async () => {
+    await expect(getShortcuts()).resolves.toEqual({ selection: 'Alt+D', input: 'Alt+S' });
+  });
+
+  it('存进去能原样读回来，值按 JSON 存在 shortcuts 这行', async () => {
+    await setShortcuts({ selection: 'Ctrl+Shift+1', input: 'Ctrl+Shift+2' });
+
+    expect(JSON.parse(fake.rows.get('shortcuts') as string)).toEqual({
+      selection: 'Ctrl+Shift+1',
+      input: 'Ctrl+Shift+2',
+    });
+    await expect(getShortcuts()).resolves.toEqual({
+      selection: 'Ctrl+Shift+1',
+      input: 'Ctrl+Shift+2',
+    });
+  });
+
+  it('字段缺失、空串或不是字符串的用默认值补齐', async () => {
+    fake.rows.set('shortcuts', JSON.stringify({ selection: '  ', input: 42 }));
+    await expect(getShortcuts()).resolves.toEqual({ selection: 'Alt+D', input: 'Alt+S' });
+  });
+});
+
+describe('口音设置', () => {
+  it('默认美音，能切到英音再切回来', async () => {
+    await expect(getAccent()).resolves.toBe('us');
+
+    await setAccent('uk');
+    await expect(getAccent()).resolves.toBe('uk');
+
+    await setAccent('us');
+    await expect(getAccent()).resolves.toBe('us');
+  });
+
+  it('存了不认识的值就回退美音', async () => {
+    fake.rows.set('accent', '"au"');
+    await expect(getAccent()).resolves.toBe('us');
   });
 });

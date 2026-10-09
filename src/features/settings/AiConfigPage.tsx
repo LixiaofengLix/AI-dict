@@ -3,6 +3,8 @@ import { aiImpl } from '../../services/ai/impl';
 import { getAiConfig, setAiConfig } from '../../services/settings';
 import type { AiConfig, ThinkingMode } from '../../types/ai';
 import { FormField } from './components/FormField';
+import { PreferencesSection } from './PreferencesSection';
+import { ShortcutsSection } from './ShortcutsSection';
 
 const THINKING_OPTIONS: readonly { value: ThinkingMode; label: string }[] = [
   { value: 'none', label: 'None' },
@@ -18,7 +20,10 @@ const THINKING_HINT =
 /** 测试连接、保存的结果提示 */
 type Status = { ok: boolean; text: string };
 
-// AI 配置页（3.4）：Base URL、模型、API Key、思考模式、测试连接。交互照 ReadingBook 的 AiConfigScreen
+/**
+ * 设置页：AI 配置（3.4，交互照 ReadingBook 的 AiConfigScreen）、快捷键、口音和开机启动（7.1）。
+ * 三块各自读写各自的设置，互不影响。
+ */
 export default function AiConfigPage() {
   const [initial, setInitial] = useState<AiConfig | null>(null);
 
@@ -34,11 +39,18 @@ export default function AiConfigPage() {
     };
   }, []);
 
-  // 读到已保存的配置后再挂载表单，输入框的初始值才正确
-  if (!initial) {
-    return <p className="px-5 py-6 text-callout text-ink-soft">正在读取配置…</p>;
-  }
-  return <AiConfigForm initial={initial} />;
+  return (
+    <div className="mx-auto flex max-w-xl flex-col gap-8 px-5 py-6">
+      {/* 读到已保存的配置后再挂载表单，输入框的初始值才正确 */}
+      {initial ? (
+        <AiConfigForm initial={initial} />
+      ) : (
+        <p className="text-callout text-ink-soft">正在读取配置…</p>
+      )}
+      <ShortcutsSection />
+      <PreferencesSection />
+    </div>
+  );
 }
 
 function AiConfigForm({ initial }: { initial: AiConfig }) {
@@ -97,7 +109,7 @@ function AiConfigForm({ initial }: { initial: AiConfig }) {
   const idle = busy === null;
 
   return (
-    <div className="mx-auto max-w-xl px-5 py-6">
+    <div>
       <h1 className="text-title font-semibold text-ink">AI 服务配置</h1>
 
       <div className="mt-4 flex flex-col gap-4 rounded-card bg-surface p-4 shadow-card">

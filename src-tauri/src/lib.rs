@@ -34,6 +34,7 @@ fn migrations() -> Vec<Migration> {
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
+        .plugin(tauri_plugin_autostart::Builder::new().build())
         // 单实例插件要第一个注册，所以放在快捷键插件前面
         .plugin(tauri_plugin_single_instance::init(|app, _args, _cwd| {
             // 第二次启动时把主窗口叫出来

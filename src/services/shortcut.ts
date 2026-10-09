@@ -1,43 +1,70 @@
 import { register, unregister, type ShortcutEvent } from '@tauri-apps/plugin-global-shortcut';
-import { isMac } from '../utils/platform';
+import { getShortcuts, type Shortcuts } from './settings';
 import { POPUP_ACTION_LABELS, showPopup, type PopupAction } from './window';
 
-/**
- * 两个动作的默认快捷键。
- * macOS 用 Option 组合；Windows 上 Alt+字母会被菜单和地址栏吃掉，所以再加 Ctrl。
- * 7.1 起改成从设置里读，这里只作为首次启动的默认值。
- */
-export const DEFAULT_SHORTCUTS: Record<PopupAction, string> = isMac
-  ? { selection: 'Alt+D', input: 'Alt+S' }
-  : { selection: 'Ctrl+Alt+D', input: 'Ctrl+Alt+S' };
+/** 两个动作，注册和重新注册都按这个顺序 */
+const ACTIONS = ['selection', 'input'] as const satisfies readonly PopupAction[];
 
 export interface FailedShortcut {
   action: PopupAction;
   accelerator: string;
 }
 
-let registered = false;
-const failedShortcuts: FailedShortcut[] = [];
+/** 当前这套快捷键（注册失败但没得回滚的也算在里面，下次启动会再试） */
+let current: Shortcuts | null = null;
+
+let started = false;
+const startupFailed: FailedShortcut[] = [];
 
 /**
- * 注册两个全局快捷键，返回注册失败的动作（快捷键被别的程序占用时注册会失败）。
- * 重复调用只会真正注册一次：React 的 StrictMode 会把 effect 跑两遍，第二次注册同一个键会报错。
+ * 启动时注册（主窗口挂载时调）。返回注册失败的动作（快捷键被别的程序占用时注册会失败）。
+ * 重复调用只做第一次：React 的 StrictMode 会把 effect 跑两遍。
  */
 export async function registerShortcuts(): Promise<FailedShortcut[]> {
-  if (registered) return failedShortcuts;
-  registered = true;
+  if (started) return startupFailed;
+  started = true;
+  const { failed } = await applyShortcuts(await getShortcuts());
+  startupFailed.push(...failed);
+  return startupFailed;
+}
 
-  for (const action of ['selection', 'input'] as const) {
-    const accelerator = DEFAULT_SHORTCUTS[action];
+/**
+ * 把两个快捷键切到 next（设置页保存时调）：和当前不同的一对先取消再注册，
+ * 注册失败的回滚到原来的键并记进失败列表。
+ * 返回实际生效的快捷键——调用方按它存库，失败的键不写进去，下次启动还是老样子。
+ */
+export async function applyShortcuts(
+  next: Shortcuts,
+): Promise<{ failed: FailedShortcut[]; applied: Shortcuts }> {
+  const failed: FailedShortcut[] = [];
+  const applied = { ...next };
+
+  for (const action of ACTIONS) {
+    const accelerator = next[action];
+    const previous = current?.[action];
+    if (previous === accelerator) {
+      continue;
+    }
+
+    if (previous) {
+      // 旧键可能因为热更新残留着失效的回调，取消失败不影响注册新的
+      await unregister(previous).catch(() => {});
+    }
     try {
       await registerOne(accelerator, () => void showPopup(action));
     } catch (error) {
       console.error(`${POPUP_ACTION_LABELS[action]} 的快捷键 ${accelerator} 注册失败`, error);
-      failedShortcuts.push({ action, accelerator });
+      failed.push({ action, accelerator });
+      if (previous) {
+        // 回滚到原来的快捷键。回滚也失败的话这个动作暂时没有快捷键，等下次启动再试
+        applied[action] = previous;
+        await registerOne(previous, () => void showPopup(action)).catch(() => {});
+      }
     }
   }
 
-  return failedShortcuts;
+  current = applied;
+  return { failed, applied };
 }
 
 /**
