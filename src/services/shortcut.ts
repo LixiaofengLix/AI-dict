@@ -2,8 +2,8 @@ import { register, unregister, type ShortcutEvent } from '@tauri-apps/plugin-glo
 import { getShortcuts, type Shortcuts } from './settings';
 import { POPUP_ACTION_LABELS, showPopup, type PopupAction } from './window';
 
-/** 两个动作，注册和重新注册都按这个顺序 */
-const ACTIONS = ['selection', 'input'] as const satisfies readonly PopupAction[];
+/** 三个动作，注册和重新注册都按这个顺序 */
+const ACTIONS = ['selection', 'input', 'ocr'] as const satisfies readonly PopupAction[];
 
 export interface FailedShortcut {
   action: PopupAction;
@@ -41,7 +41,7 @@ export async function registerShortcuts(): Promise<FailedShortcut[]> {
 }
 
 /**
- * 把两个快捷键切到 next（设置页保存时调）：和当前不同的一对先取消再注册，
+ * 把快捷键切到 next（设置页保存时调）：和当前不同的一对先取消再注册，
  * 注册失败的回滚到原来的键并记进失败列表。
  * 返回实际生效的快捷键——调用方按它存库，失败的键不写进去，下次启动还是老样子。
  */

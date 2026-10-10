@@ -7,11 +7,11 @@ import { POPUP_ACTION_LABELS, type PopupAction } from '../../services/window';
 import { acceleratorFromKey, heldModifiers } from '../../utils/keyboard';
 import { isMac } from '../../utils/platform';
 
-const ACTIONS: readonly PopupAction[] = ['selection', 'input'];
+const ACTIONS: readonly PopupAction[] = ['selection', 'input', 'ocr'];
 
 type Status = { ok: boolean; text: string };
 
-/** 设置页的快捷键区（7.1，样张 12 右上）：两个键帽框，保存后立即重新注册 */
+/** 设置页的快捷键区（7.1，样张 12 右上；8.1 加了截图翻译）：键帽框，保存后立即重新注册 */
 export function ShortcutsSection() {
   const [form, setForm] = useState<Shortcuts | null>(null);
   const [busy, setBusy] = useState(false);

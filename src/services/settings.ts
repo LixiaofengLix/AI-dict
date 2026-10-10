@@ -6,7 +6,7 @@ import { getDb } from './db';
 /** settings 表按 key 存一行，value 是 JSON。AI 配置（含 API Key）都在这行里 */
 const KEY_AI = 'ai';
 
-/** 两个全局快捷键（7.1 起可改），值如 Alt+D */
+/** 全局快捷键（7.1 起可改），值如 Alt+D */
 const KEY_SHORTCUTS = 'shortcuts';
 
 /** 发音口音 */
@@ -24,16 +24,16 @@ const PROMPT_KINDS: readonly PromptKind[] = [
   'translateToEnglish',
 ];
 
-/** 两个全局快捷键，和 utils 里的 PopupAction 一一对应 */
-export type Shortcuts = { selection: string; input: string };
+/** 三个全局快捷键，和 services/window 里的 PopupAction 一一对应 */
+export type Shortcuts = { selection: string; input: string; ocr: string };
 
 /**
  * 首次启动的默认快捷键。
  * macOS 用 Option 组合；Windows 上 Alt+字母会被菜单和地址栏吃掉，所以再加 Ctrl。
  */
 export const DEFAULT_SHORTCUTS: Shortcuts = isMac
-  ? { selection: 'Alt+D', input: 'Alt+S' }
-  : { selection: 'Ctrl+Alt+D', input: 'Ctrl+Alt+S' };
+  ? { selection: 'Alt+D', input: 'Alt+S', ocr: 'Alt+X' }
+  : { selection: 'Ctrl+Alt+D', input: 'Ctrl+Alt+S', ocr: 'Ctrl+Alt+X' };
 
 const THINKING_MODES: readonly ThinkingMode[] = ['none', 'low', 'high', 'max'];
 
@@ -105,10 +105,11 @@ function toShortcuts(stored: unknown): Shortcuts {
   return {
     selection: pick(s.selection, DEFAULT_SHORTCUTS.selection),
     input: pick(s.input, DEFAULT_SHORTCUTS.input),
+    ocr: pick(s.ocr, DEFAULT_SHORTCUTS.ocr),
   };
 }
 
-/** 两个全局快捷键。没设置过时用默认值 */
+/** 三个全局快捷键。没设置过时用默认值（8.1 之前存的只有两个，截图翻译那个也走默认） */
 export async function getShortcuts(): Promise<Shortcuts> {
   return toShortcuts(await read(KEY_SHORTCUTS));
 }

@@ -82,25 +82,35 @@ describe('AI 配置', () => {
 
 describe('快捷键设置', () => {
   it('没设置过时给默认值', async () => {
-    await expect(getShortcuts()).resolves.toEqual({ selection: 'Alt+D', input: 'Alt+S' });
+    await expect(getShortcuts()).resolves.toEqual({
+      selection: 'Alt+D',
+      input: 'Alt+S',
+      ocr: 'Alt+X',
+    });
   });
 
   it('存进去能原样读回来，值按 JSON 存在 shortcuts 这行', async () => {
-    await setShortcuts({ selection: 'Ctrl+Shift+1', input: 'Ctrl+Shift+2' });
+    await setShortcuts({ selection: 'Ctrl+Shift+1', input: 'Ctrl+Shift+2', ocr: 'Ctrl+Shift+3' });
 
     expect(JSON.parse(fake.rows.get('shortcuts') as string)).toEqual({
       selection: 'Ctrl+Shift+1',
       input: 'Ctrl+Shift+2',
+      ocr: 'Ctrl+Shift+3',
     });
     await expect(getShortcuts()).resolves.toEqual({
       selection: 'Ctrl+Shift+1',
       input: 'Ctrl+Shift+2',
+      ocr: 'Ctrl+Shift+3',
     });
   });
 
   it('字段缺失、空串或不是字符串的用默认值补齐', async () => {
     fake.rows.set('shortcuts', JSON.stringify({ selection: '  ', input: 42 }));
-    await expect(getShortcuts()).resolves.toEqual({ selection: 'Alt+D', input: 'Alt+S' });
+    await expect(getShortcuts()).resolves.toEqual({
+      selection: 'Alt+D',
+      input: 'Alt+S',
+      ocr: 'Alt+X',
+    });
   });
 });
 

@@ -1,3 +1,4 @@
+mod ocr;
 mod selection;
 
 use tauri::{
@@ -99,7 +100,11 @@ pub fn run() {
             selection::get_selected_text,
             selection::is_accessibility_trusted,
             selection::request_accessibility_permission,
-            selection::open_accessibility_settings
+            selection::open_accessibility_settings,
+            ocr::recognize_screenshot,
+            ocr::is_screen_capture_trusted,
+            ocr::request_screen_capture_permission,
+            ocr::open_screen_capture_settings
         ])
         .on_window_event(|window, event| {
             // 关窗只隐藏，应用继续驻留托盘；退出走托盘菜单

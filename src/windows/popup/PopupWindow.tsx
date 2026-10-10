@@ -12,6 +12,7 @@ import {
   showMainWindow,
   type PopupTriggerPayload,
 } from '../../services/window';
+import { openScreenCaptureSettings, requestScreenCapturePermission } from '../../services/ocr';
 import {
   openAccessibilitySettings,
   requestAccessibilityPermission,
@@ -22,7 +23,7 @@ import { isImeEnter } from '../../utils/keyboard';
 /** 失焦后等这么久再关：Windows 上拖动窗口会短暂失焦，立刻关会误伤（pot 踩过这个坑） */
 const BLUR_CLOSE_DELAY = 100;
 
-// 划词翻译 / 输入翻译弹窗：按触发方式定位、失焦关闭、可拖动、可固定
+// 划词翻译 / 输入翻译 / 截图翻译弹窗：按触发方式定位、失焦关闭、可拖动、可固定
 export default function PopupWindow() {
   const [trigger, setTrigger] = useState<PopupTriggerPayload | null>(null);
   const [draft, setDraft] = useState('');
@@ -115,9 +116,19 @@ export default function PopupWindow() {
       // 取词失败：把原因说清楚，同时让用户能直接输入
       if (!selection.ok) return renderInput(`取词失败（${selection.error}），直接输入也一样。`);
       // 没授权和"没选中"不是一回事：前者给授权引导（见 2.2）
-      if (!selection.text && !selection.trusted) return <PermissionView />;
+      if (!selection.text && !selection.trusted) return <PermissionView {...ACCESSIBILITY} />;
       if (!selection.text) return renderInput('没选中文字，直接输入也一样。');
       return renderResult(edited ?? selection.text, setEdited);
+    }
+
+    // 截图翻译（8.1）：和划词一样，认不出字时进输入界面，没屏幕录制权限时给引导
+    if (trigger.action === 'ocr') {
+      const ocr = trigger.ocr;
+      if (!ocr) return null;
+      if (!ocr.ok) return renderInput(`截图识别失败（${ocr.error}），直接输入也一样。`);
+      if (!ocr.text && !ocr.trusted) return <PermissionView {...SCREEN_CAPTURE} />;
+      if (!ocr.text) return renderInput('截图里没认出文字，直接输入也一样。');
+      return renderResult(edited ?? ocr.text, setEdited);
     }
 
     return renderInput();
@@ -254,26 +265,55 @@ function InputHint() {
   );
 }
 
-const PERMISSION_STEPS = [
-  '点下面的按钮，系统会先弹一次提示',
-  '在「隐私与安全性 → 辅助功能」打开 AI-dict',
-  '回来再按一次快捷键，不用重启',
-];
+interface PermissionGuide {
+  tag: string;
+  title: string;
+  steps: string[];
+  /** 先请系统提示一次（把本应用加进名单），再打开系统设置的对应页 */
+  request: () => Promise<unknown>;
+  open: () => Promise<void>;
+}
+
+/** 划词要的辅助功能权限（2.2）：授权后不用重启 */
+const ACCESSIBILITY: PermissionGuide = {
+  tag: 'macOS · 辅助功能',
+  title: '取词要用「辅助功能」权限，现在还没开。',
+  steps: [
+    '点下面的按钮，系统会先弹一次提示',
+    '在「隐私与安全性 → 辅助功能」打开 AI-dict',
+    '回来再按一次快捷键，不用重启',
+  ],
+  request: requestAccessibilityPermission,
+  open: openAccessibilitySettings,
+};
+
+/** 截图要的屏幕录制权限（8.1）：和辅助功能不同，系统要求重启应用才生效 */
+const SCREEN_CAPTURE: PermissionGuide = {
+  tag: 'macOS · 屏幕录制',
+  title: '截图要用「屏幕录制」权限，现在还没开。',
+  steps: [
+    '点下面的按钮，系统会先弹一次提示',
+    '在「隐私与安全性 → 屏幕录制」打开 AI-dict',
+    '按系统提示退出并重新打开 AI-dict',
+  ],
+  request: requestScreenCapturePermission,
+  open: openScreenCaptureSettings,
+};
 
 /**
- * 没有辅助功能权限时的引导（macOS，样张 09）。系统设置一打开，弹窗就失去焦点关掉了，
- * 所以这里不用管"授权之后怎么办"——用户回来再按一次快捷键即可，取词那条路会重新判断权限。
+ * 没有系统权限时的引导（macOS，样张 09）。系统设置一打开，弹窗就失去焦点关掉了，
+ * 所以这里不用管"授权之后怎么办"——用户回来再按一次快捷键即可，那条路会重新判断权限。
  */
-function PermissionView() {
+function PermissionView({ tag, title, steps, request, open }: PermissionGuide) {
   const [error, setError] = useState<string | null>(null);
 
   async function openSettings() {
     setError(null);
     try {
-      // 先请系统提示一次：这是把本应用加进「辅助功能」名单的唯一办法，
+      // 先请系统提示一次：这是把本应用加进名单的唯一办法，
       // 不调它，用户在系统设置的列表里根本找不到本应用的开关
-      await requestAccessibilityPermission();
-      await openAccessibilitySettings();
+      await request();
+      await open();
     } catch (err) {
       setError(String(err));
     }
@@ -283,12 +323,12 @@ function PermissionView() {
     <div className="flex min-h-0 flex-1 flex-col justify-center gap-2.5">
       <Mascot kind="black" className="self-center" />
       <div className={CARD.feature}>
-        <span className={tagClass('orange')}>macOS · 辅助功能</span>
+        <span className={tagClass('orange')}>{tag}</span>
         <p className="mt-2.5 text-[16px] leading-[1.35] font-extrabold tracking-[-0.02em] text-ink">
-          取词要用「辅助功能」权限，现在还没开。
+          {title}
         </p>
         <ol className="mt-2.5">
-          {PERMISSION_STEPS.map((step, index) => (
+          {steps.map((step, index) => (
             <li
               key={step}
               className="flex items-center gap-2.5 border-b border-line py-[7px] text-[12.5px] font-semibold text-ink last:border-b-0"

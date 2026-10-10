@@ -8,14 +8,16 @@ import {
   type Monitor,
 } from '@tauri-apps/api/window';
 import { centerInWorkArea, placeNearCursor, type Rect } from '../utils/popupPosition';
+import { isScreenCaptureTrusted, recognizeScreenshot } from './ocr';
 import { getSelectedText, isAccessibilityTrusted } from './selection';
 
-/** 弹窗的两种触发方式：划词取词、手动输入 */
-export type PopupAction = 'selection' | 'input';
+/** 弹窗的三种触发方式：划词取词、手动输入、截图识别 */
+export type PopupAction = 'selection' | 'input' | 'ocr';
 
 export const POPUP_ACTION_LABELS: Record<PopupAction, string> = {
   selection: '划词翻译',
   input: '输入翻译',
+  ocr: '截图翻译',
 };
 
 /**
@@ -24,18 +26,20 @@ export const POPUP_ACTION_LABELS: Record<PopupAction, string> = {
 export const POPUP_TRIGGER_EVENT = 'popup-trigger';
 
 /**
- * 划词翻译的取词结果。
+ * 划词翻译的取词结果，截图翻译的识别结果也是这个形状。
  *
- * 拿到结果时一并带上辅助功能权限：文字是空的时候，界面要靠它区分"没选中东西"和"没授权"。
- * 有文字就别管这个值——权限查询可能滞后，取到文字说明实际是通的。
+ * 拿到结果时一并带上权限（划词是辅助功能，截图是屏幕录制）：文字是空的时候，界面要靠它区分
+ * "没选中 / 没认出字"和"没授权"。有文字就别管这个值——权限查询可能滞后，拿到文字说明实际是通的。
  */
 export type SelectionResult =
   { ok: true; text: string; trusted: boolean } | { ok: false; error: string };
 
 export interface PopupTriggerPayload {
   action: PopupAction;
-  /** 划词翻译取到的结果；输入翻译不带这个字段 */
+  /** 划词翻译取到的结果 */
   selection?: SelectionResult;
+  /** 截图翻译识别出的结果 */
+  ocr?: SelectionResult;
 }
 
 /** 主窗口的两个页面（6.2 加的生词本） */
@@ -67,7 +71,7 @@ function workAreaOf(monitor: Monitor): Rect {
 const POPUP_PADDING = 24;
 
 /**
- * 摆弹窗：划词摆到光标右下角（用户刚在那儿划的词），输入翻译摆在工作区正中间。
+ * 摆弹窗：划词和截图摆到光标右下角（用户刚在那儿划的词、框完松手），输入翻译摆在工作区正中间。
  * 两种都先按光标位置反查是哪块显示器，副屏上也不会摆回主屏。
  * 窗口外面那圈留白是透明的，所以按卡片尺寸算位置、再把窗口往回挪一圈——
  * 用户看到的卡片就落在算出来的位置上。
@@ -87,6 +91,9 @@ async function placePopup(popup: WebviewWindow, action: PopupAction): Promise<vo
   await popup.setPosition(new PhysicalPosition(position.x - padding, position.y - padding));
 }
 
+/** 系统框选界面是否开着 */
+let capturing = false;
+
 /**
  * 把弹窗叫出来：摆好位置、告诉它触发方式，然后显示。
  * 弹窗是复用的同一个窗口，连续触发不会多开。
@@ -97,7 +104,22 @@ export async function showPopup(action: PopupAction): Promise<void> {
 
   // 划词翻译要在弹窗显示之前取词：辅助功能接口和模拟复制都要求被划词的应用还是前台，
   // 弹窗一显示焦点就跑到我们这边了。走辅助功能接口时取词是微秒级的，弹窗照样立刻出现
-  const payload: PopupTriggerPayload = action === 'selection' ? await takeSelection() : { action };
+  let payload: PopupTriggerPayload = { action };
+  if (action === 'selection') {
+    payload = await takeSelection();
+  } else if (action === 'ocr') {
+    // 框选界面还开着时又按了一次：系统截图不能叠两层，忽略
+    if (capturing) return;
+    capturing = true;
+    try {
+      const result = await takeScreenshot();
+      // 用户按 Esc 取消了框选，什么都不弹
+      if (!result) return;
+      payload = result;
+    } finally {
+      capturing = false;
+    }
+  }
 
   // 先定位再显示，免得窗口在旧位置闪一下
   await placePopup(popup, action);
@@ -121,6 +143,20 @@ export async function showMainWindow(page?: MainPage): Promise<void> {
   await main.unminimize().catch(() => {});
   await main.show();
   await main.setFocus();
+}
+
+/** 框选一块屏幕并识别文字；用户取消时返回 null，失败时把错误信息一起带给弹窗 */
+async function takeScreenshot(): Promise<PopupTriggerPayload | null> {
+  try {
+    const text = await recognizeScreenshot();
+    if (text === null) return null;
+    // 认出了字说明权限是通的，不用再问
+    const trusted = text ? true : await isScreenCaptureTrusted();
+    return { action: 'ocr', ocr: { ok: true, text, trusted } };
+  } catch (error) {
+    console.error('截图识别失败', error);
+    return { action: 'ocr', ocr: { ok: false, error: String(error) } };
+  }
 }
 
 /** 取当前选中的文字，失败时把错误信息一起带给弹窗 */

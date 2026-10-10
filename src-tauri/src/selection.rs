@@ -58,6 +58,9 @@ pub fn open_accessibility_settings() -> Result<(), String> {
 }
 
 #[cfg(target_os = "macos")]
+pub(crate) use platform::open_system_settings;
+
+#[cfg(target_os = "macos")]
 mod platform {
     use std::ptr;
     use std::thread;
@@ -139,12 +142,17 @@ mod platform {
         unsafe { AXIsProcessTrustedWithOptions(options.as_concrete_TypeRef()) != 0 }
     }
 
+    pub(super) fn open_accessibility_settings() -> Result<(), String> {
+        open_system_settings(ACCESSIBILITY_SETTINGS_URL)
+    }
+
+    /// 用 NSWorkspace 打开一条系统设置的深链（截图翻译的屏幕录制权限也用它）
     // objc 的宏里有 cfg(feature = "cargo-clippy")，会触发 unexpected_cfgs 警告
     #[allow(unexpected_cfgs)]
-    pub(super) fn open_accessibility_settings() -> Result<(), String> {
+    pub(crate) fn open_system_settings(url: &str) -> Result<(), String> {
         autoreleasepool(|| unsafe {
             // CFString 和 NSString 是 toll-free bridged，直接当 NSString 传给 NSURL
-            let url_string = CFString::new(ACCESSIBILITY_SETTINGS_URL);
+            let url_string = CFString::new(url);
             let url: *mut Object = msg_send![
                 class!(NSURL),
                 URLWithString: url_string.as_concrete_TypeRef() as *mut Object
