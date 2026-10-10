@@ -1,13 +1,17 @@
-//! 截图翻译：框选一块屏幕、用系统 OCR 认出里面的文字，以及 macOS 上的屏幕录制权限。
+//! 截图翻译：框选一块屏幕截出图、用系统 OCR 认出里面的文字，以及 macOS 上的屏幕录制权限。
 //!
 //! 思路参考 pot 的 `system_ocr.rs`：macOS 上框选交给系统的 `screencapture -i`，识别用 Vision。
 //! 不同的是 pot 另带一个 Swift 小程序做识别，这里直接用 objc 调 Vision，不多带二进制。
 //!
 //! Windows 没有系统框选可用：前端开一个透明的全屏窗口让用户拖框（src/windows/snip/），
-//! 松手后藏起窗口、把选区的物理像素坐标交给 `recognize_screen_region`，这里用 GDI 只截那一块，
-//! 交给 Windows.Media.Ocr。pot 是先截整屏铺在窗口里再裁，这里不用来回传整屏图。
+//! 松手后藏起窗口、把选区的物理像素坐标交给 `capture_screen_region`，这里用 GDI 只截那一块。
+//! pot 是先截整屏铺在窗口里再裁，这里不用来回传整屏图。
 //!
-//! Windows 的 OCR 比 macOS 的 Vision 弱得多（见阶段 9）：识别前把选区放大 2 倍，
+//! 阶段 9 起截图和识别分成两步：`capture_screenshot` / `capture_screen_region` 只框选截图、
+//! 返回 PNG 的 base64，识别交给 `ocr_system`。中间还可以插别的识别方式（云 OCR、大模型读图），
+//! 走哪条由前端的 services/ocr.ts 定——图在前端手里，换一条不用重新框选。
+//!
+//! Windows 的 OCR 比 macOS 的 Vision 弱得多：识别前把图放大 2 倍，
 //! 引擎也自己挑（优先中文，见 `create_engine`），不跟着系统语言走。
 //!
 //! 这里只返回一行行的文字，拼成一段（连字符、中英文空格）在 src/utils/joinOcrLines.ts 里做。
@@ -15,19 +19,18 @@
 
 use tauri::Manager;
 
-/// 框选一块屏幕并识别里面的文字（macOS：框选用系统的），返回识别出的各行（从上到下）。
-/// 用户按 Esc 取消框选时返回 None；框了但没认出字返回空数组。
+/// 弹系统框选截一块屏幕（macOS 用系统的框选），返回截图的 PNG base64；用户按 Esc 取消时返回 None。
 ///
 /// 框选期间会一直阻塞到用户松手，所以扔到阻塞线程池上跑。
 #[tauri::command]
-pub async fn recognize_screenshot(app: tauri::AppHandle) -> Result<Option<Vec<String>>, String> {
+pub async fn capture_screenshot(app: tauri::AppHandle) -> Result<Option<String>, String> {
     let dir = app
         .path()
         .app_cache_dir()
         .map_err(|error| format!("找不到缓存目录：{error}"))?;
-    tauri::async_runtime::spawn_blocking(move || platform::recognize_screenshot(dir))
+    tauri::async_runtime::spawn_blocking(move || platform::capture(dir))
         .await
-        .map_err(|error| format!("截图识别出错：{error}"))?
+        .map_err(|error| format!("截图出错：{error}"))?
 }
 
 /// 屏幕上的一块区域，物理像素，坐标相对整个虚拟桌面（副屏可能是负数）
@@ -40,11 +43,19 @@ pub struct ScreenRegion {
     pub height: u32,
 }
 
-/// 截下屏幕上的一块并识别里面的文字（Windows：选区由前端的框选窗口给出）。
-/// 返回识别出的各行，没认出字返回空数组
+/// 截下屏幕上的一块（Windows：选区由前端的框选窗口给出），返回截图的 PNG base64
 #[tauri::command]
-pub async fn recognize_screen_region(region: ScreenRegion) -> Result<Vec<String>, String> {
-    tauri::async_runtime::spawn_blocking(move || platform::recognize_screen_region(region))
+pub async fn capture_screen_region(region: ScreenRegion) -> Result<String, String> {
+    tauri::async_runtime::spawn_blocking(move || platform::capture_region(region))
+        .await
+        .map_err(|error| format!("截图出错：{error}"))?
+}
+
+/// 用系统 OCR 认出图里的文字，返回识别出的各行（从上到下）；没认出字返回空数组。
+/// 图是 `capture_screenshot` / `capture_screen_region` 给的 PNG base64
+#[tauri::command]
+pub async fn ocr_system(image: String) -> Result<Vec<String>, String> {
+    tauri::async_runtime::spawn_blocking(move || platform::recognize(&image))
         .await
         .map_err(|error| format!("截图识别出错：{error}"))?
 }
@@ -71,10 +82,11 @@ pub fn open_screen_capture_settings() -> Result<(), String> {
 #[cfg(target_os = "macos")]
 mod platform {
     use std::fs;
-    use std::path::{Path, PathBuf};
+    use std::path::PathBuf;
     use std::process::Command;
     use std::ptr;
 
+    use base64::Engine;
     use core_foundation::base::TCFType;
     use core_foundation::string::{CFString, CFStringRef};
     use objc::rc::autoreleasepool;
@@ -118,7 +130,9 @@ mod platform {
         crate::selection::open_system_settings(SCREEN_CAPTURE_SETTINGS_URL)
     }
 
-    pub(super) fn recognize_screenshot(dir: PathBuf) -> Result<Option<Vec<String>>, String> {
+    /// 弹系统框选，把截到的图读成 PNG base64；用户 Esc 取消时返回 None。
+    /// 存文件是 `screencapture` 唯一的选择，读完就删
+    pub(super) fn capture(dir: PathBuf) -> Result<Option<String>, String> {
         fs::create_dir_all(&dir).map_err(|error| format!("建不了缓存目录：{error}"))?;
         let path = dir.join(SCREENSHOT_FILE);
         // 上次异常退出可能留着旧图，不删的话取消框选会被当成截了旧图
@@ -135,35 +149,39 @@ mod platform {
             return Ok(None);
         }
 
-        let lines = recognize_text(&path);
+        let bytes = fs::read(&path).map_err(|error| format!("读不出截图：{error}"))?;
         let _ = fs::remove_file(&path);
-        lines.map(Some)
+        Ok(Some(base64::engine::general_purpose::STANDARD.encode(bytes)))
     }
 
-    pub(super) fn recognize_screen_region(
-        _region: super::ScreenRegion,
-    ) -> Result<Vec<String>, String> {
+    pub(super) fn capture_region(_region: super::ScreenRegion) -> Result<String, String> {
         Err("macOS 上框选用系统截图，不走这条".to_string())
+    }
+
+    pub(super) fn recognize(image: &str) -> Result<Vec<String>, String> {
+        let bytes = base64::engine::general_purpose::STANDARD
+            .decode(image)
+            .map_err(|error| format!("截图数据坏了：{error}"))?;
+        recognize_bytes(&bytes)
     }
 
     /// 用 Vision 认出图里的文字，一个观测结果是一行，取每行可信度最高的候选
     // objc 的宏里有 cfg(feature = "cargo-clippy")，会触发 unexpected_cfgs 警告
     #[allow(unexpected_cfgs)]
-    fn recognize_text(path: &Path) -> Result<Vec<String>, String> {
-        let path = path.to_str().ok_or("截图路径里有无法识别的字符")?;
+    fn recognize_bytes(bytes: &[u8]) -> Result<Vec<String>, String> {
         let handler_class = Class::get("VNImageRequestHandler").ok_or("系统里没有 Vision")?;
         let request_class = Class::get("VNRecognizeTextRequest").ok_or("系统里没有 Vision")?;
 
         autoreleasepool(|| unsafe {
-            // CFString 和 NSString 是 toll-free bridged，直接当 NSString 用
-            let path = CFString::new(path);
-            let url: *mut Object = msg_send![
-                class!(NSURL),
-                fileURLWithPath: path.as_concrete_TypeRef() as *mut Object
+            // PNG 字节直接交给 Vision（VNImageRequestHandler 也吃 NSData），不落盘
+            let data: *mut Object = msg_send![
+                class!(NSData),
+                dataWithBytes: bytes.as_ptr() as *const std::ffi::c_void
+                length: bytes.len()
             ];
             let options: *mut Object = msg_send![class!(NSDictionary), dictionary];
             let handler: *mut Object = msg_send![handler_class, alloc];
-            let handler: *mut Object = msg_send![handler, initWithURL: url options: options];
+            let handler: *mut Object = msg_send![handler, initWithData: data options: options];
 
             let request: *mut Object = msg_send![request_class, alloc];
             let request: *mut Object = msg_send![request, init];
@@ -238,14 +256,15 @@ mod platform {
 mod platform {
     use std::path::PathBuf;
 
+    use base64::Engine;
     use windows::Globalization::Language;
     use windows::Graphics::Imaging::{BitmapPixelFormat, SoftwareBitmap};
     use windows::Media::Ocr::OcrEngine;
     use windows::Storage::Streams::DataWriter;
     use windows::Win32::Graphics::Gdi::{
-        CreateCompatibleBitmap, CreateCompatibleDC, DeleteDC, DeleteObject, GetDC, GetDIBits,
-        ReleaseDC, SelectObject, SetStretchBltMode, StretchBlt, BITMAPINFO, BITMAPINFOHEADER,
-        BI_RGB, DIB_RGB_COLORS, HALFTONE, SRCCOPY,
+        BitBlt, CreateCompatibleBitmap, CreateCompatibleDC, DeleteDC, DeleteObject, GetDC,
+        GetDIBits, ReleaseDC, SelectObject, BITMAPINFO, BITMAPINFOHEADER, BI_RGB, DIB_RGB_COLORS,
+        SRCCOPY,
     };
 
     use super::ScreenRegion;
@@ -262,31 +281,48 @@ mod platform {
         Err("Windows 上没有屏幕录制权限这一项".to_string())
     }
 
-    pub(super) fn recognize_screenshot(_dir: PathBuf) -> Result<Option<Vec<String>>, String> {
+    pub(super) fn capture(_dir: PathBuf) -> Result<Option<String>, String> {
         Err("Windows 上框选由前端的框选窗口做，不走这条".to_string())
     }
 
-    pub(super) fn recognize_screen_region(region: ScreenRegion) -> Result<Vec<String>, String> {
+    pub(super) fn capture_region(region: ScreenRegion) -> Result<String, String> {
+        let pixels = capture_pixels(&region)?;
+        let png = encode_png(pixels, region.width, region.height)?;
+        Ok(base64::engine::general_purpose::STANDARD.encode(png))
+    }
+
+    pub(super) fn recognize(image: &str) -> Result<Vec<String>, String> {
+        let bytes = base64::engine::general_purpose::STANDARD
+            .decode(image)
+            .map_err(|error| format!("截图数据坏了：{error}"))?;
+        let image = image::load_from_memory_with_format(&bytes, image::ImageFormat::Png)
+            .map_err(|error| format!("读不出截图：{error}"))?
+            .to_rgba8();
+        let (width, height) = image.dimensions();
+
         // 超过这个边长 OcrEngine 直接报错，提前给句人话
         let max = OcrEngine::MaxImageDimension().map_err(|error| error.to_string())?;
-        if region.width > max || region.height > max {
+        if width > max || height > max {
             return Err(format!("框选的区域太大（边长超过 {max} 像素）"));
         }
-        let engine = create_engine()?;
-
         // 放大 2 倍再交给引擎：Windows 的 OCR 是按扫描件（≥150 DPI）设计的，屏幕上 12–14px 的字
         // 只有约 96 DPI，直接喂给它错得多；放大后超过引擎上限时就不放大
-        let scale = if region.width * 2 <= max && region.height * 2 <= max {
-            2
+        let image = if width * 2 <= max && height * 2 <= max {
+            image::imageops::resize(
+                &image,
+                width * 2,
+                height * 2,
+                image::imageops::FilterType::CatmullRom,
+            )
         } else {
-            1
+            image
         };
-        let width = region.width * scale;
-        let height = region.height * scale;
-        let pixels = capture(&region, scale)?;
-        let bitmap =
-            to_software_bitmap(&pixels, width, height).map_err(|error| error.to_string())?;
-        recognize(&engine, &bitmap).map_err(|error| format!("识别失败：{error}"))
+        let (width, height) = image.dimensions();
+
+        let bitmap = to_software_bitmap(&swap_red_blue(image.into_raw()), width, height)
+            .map_err(|error| error.to_string())?;
+        let engine = create_engine()?;
+        recognize_bitmap(&engine, &bitmap).map_err(|error| format!("识别失败：{error}"))
     }
 
     /// 建识别引擎：能挑到中文就用中文，否则跟着系统语言，再不行用装了语言包的任意一个。
@@ -334,20 +370,18 @@ mod platform {
         )
     }
 
-    /// 用 GDI 从屏幕上拷出选区、放大 scale 倍，返回自上而下的 BGRA 像素
-    fn capture(region: &ScreenRegion, scale: u32) -> Result<Vec<u8>, String> {
-        let width = (region.width * scale) as i32;
-        let height = (region.height * scale) as i32;
-        let mut pixels = vec![0u8; width as usize * height as usize * 4];
+    /// 用 GDI 从屏幕上拷出选区，返回自上而下的 BGRA 像素
+    fn capture_pixels(region: &ScreenRegion) -> Result<Vec<u8>, String> {
+        let width = region.width as i32;
+        let height = region.height as i32;
+        let mut pixels = vec![0u8; region.width as usize * region.height as usize * 4];
 
         unsafe {
             let screen = GetDC(None);
             let memory = CreateCompatibleDC(Some(screen));
             let bitmap = CreateCompatibleBitmap(screen, width, height);
             let previous = SelectObject(memory, bitmap.into());
-            // HALFTONE 是 GDI 里质量最好的拉伸模式，默认的 COLORONCOLOR 是最近邻，放大后边缘是锯齿
-            SetStretchBltMode(memory, HALFTONE);
-            let copied = StretchBlt(
+            let copied = BitBlt(
                 memory,
                 0,
                 0,
@@ -356,8 +390,6 @@ mod platform {
                 Some(screen),
                 region.x,
                 region.y,
-                region.width as i32,
-                region.height as i32,
                 SRCCOPY,
             );
             // GetDIBits 要求位图没有被选进任何 DC，先换回去
@@ -380,7 +412,7 @@ mod platform {
                 memory,
                 bitmap,
                 0,
-                height as u32,
+                region.height,
                 Some(pixels.as_mut_ptr().cast()),
                 &mut info,
                 DIB_RGB_COLORS,
@@ -390,17 +422,36 @@ mod platform {
             let _ = DeleteDC(memory);
             ReleaseDC(None, screen);
 
-            copied.ok().map_err(|error| format!("截屏失败：{error}"))?;
+            copied.map_err(|error| format!("截屏失败：{error}"))?;
             if rows == 0 {
                 return Err("截屏失败：读不出像素".to_string());
             }
         }
 
-        // GDI 拷出来的 alpha 是 0，按全透明交给 OCR 会被当成空白
+        // GDI 拷出来的 alpha 是 0，按全透明交给 PNG / OCR 会被当成空白
         for pixel in pixels.as_chunks_mut::<4>().0 {
             pixel[3] = 255;
         }
         Ok(pixels)
+    }
+
+    /// BGRA 像素编成 PNG；云 OCR 和大模型读图用的也是这张图，所以用无损的
+    fn encode_png(pixels: Vec<u8>, width: u32, height: u32) -> Result<Vec<u8>, String> {
+        let image = image::RgbaImage::from_raw(width, height, swap_red_blue(pixels))
+            .ok_or("截图的像素数量对不上")?;
+        let mut png = Vec::new();
+        image::DynamicImage::ImageRgba8(image)
+            .write_to(&mut std::io::Cursor::new(&mut png), image::ImageFormat::Png)
+            .map_err(|error| format!("编码截图失败：{error}"))?;
+        Ok(png)
+    }
+
+    /// GDI 给的是 BGRA，PNG 要 RGBA、SoftwareBitmap 要 BGRA，两个方向都在这里换
+    fn swap_red_blue(mut pixels: Vec<u8>) -> Vec<u8> {
+        for pixel in pixels.as_chunks_mut::<4>().0 {
+            pixel.swap(0, 2);
+        }
+        pixels
     }
 
     fn to_software_bitmap(
@@ -420,7 +471,7 @@ mod platform {
     }
 
     /// 一个 OcrLine 是一行。中文的行里每个字之间都带空格，交给 joinOcrLines 去掉
-    fn recognize(
+    fn recognize_bitmap(
         engine: &OcrEngine,
         bitmap: &SoftwareBitmap,
     ) -> windows::core::Result<Vec<String>> {

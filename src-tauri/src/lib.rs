@@ -101,8 +101,9 @@ pub fn run() {
             selection::is_accessibility_trusted,
             selection::request_accessibility_permission,
             selection::open_accessibility_settings,
-            ocr::recognize_screenshot,
-            ocr::recognize_screen_region,
+            ocr::capture_screenshot,
+            ocr::capture_screen_region,
+            ocr::ocr_system,
             ocr::is_screen_capture_trusted,
             ocr::request_screen_capture_permission,
             ocr::open_screen_capture_settings

@@ -59,9 +59,11 @@ name = "ai-dict"
 version = "0.1.0"
 dependencies = [
  "arboard",
+ "base64 0.22.1",
  "core-foundation 0.9.4",
  "core-graphics 0.22.3",
  "get-selected-text",
+ "image",
  "objc",
  "serde",
  "serde_json",

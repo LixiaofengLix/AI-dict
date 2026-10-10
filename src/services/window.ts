@@ -13,9 +13,10 @@ import { delay } from '../utils/async';
 import { isMac } from '../utils/platform';
 import { centerInWorkArea, placeNearCursor, type Rect } from '../utils/popupPosition';
 import {
+  captureScreenRegion,
+  captureScreenshot,
   isScreenCaptureTrusted,
-  recognizeScreenRegion,
-  recognizeScreenshot,
+  recognizeText,
   type ScreenRegion,
 } from './ocr';
 import { getSelectedText, isAccessibilityTrusted } from './selection';
@@ -154,17 +155,19 @@ export async function showMainWindow(page?: MainPage): Promise<void> {
   await main.setFocus();
 }
 
-/** 框选一块屏幕并识别文字；用户取消时返回 null，失败时把错误信息一起带给弹窗 */
+/** 框选一块屏幕截出图、认出文字；用户取消时返回 null，失败时把错误信息一起带给弹窗 */
 async function takeScreenshot(): Promise<PopupTriggerPayload | null> {
   try {
-    let text: string | null;
+    // 截图和识别分两步：图先拿在手里，识别走哪条由 services/ocr 定，换一条不用重新框选
+    let image: string | null;
     if (isMac) {
-      text = await recognizeScreenshot();
+      image = await captureScreenshot();
     } else {
       const region = await pickScreenRegion();
-      text = region ? await recognizeScreenRegion(region) : null;
+      image = region ? await captureScreenRegion(region) : null;
     }
-    if (text === null) return null;
+    if (image === null) return null;
+    const text = await recognizeText(image);
     // 认出了字说明权限是通的，不用再问
     const trusted = text ? true : await isScreenCaptureTrusted();
     return { action: 'ocr', ocr: { ok: true, text, trusted } };
