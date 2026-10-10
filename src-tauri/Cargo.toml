@@ -59,6 +59,7 @@ windows-sys = { version = "0.59", features = ["Win32_UI_Input_KeyboardAndMouse"]
 # 用和 Tauri 依赖树里同一版的 windows，不多编一份
 windows = { version = "0.62", features = [
   "Foundation_Collections",
+  "Globalization",
   "Graphics_Imaging",
   "Media_Ocr",
   "Storage_Streams",

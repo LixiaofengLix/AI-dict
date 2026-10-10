@@ -7,6 +7,9 @@
 //! 松手后藏起窗口、把选区的物理像素坐标交给 `recognize_screen_region`，这里用 GDI 只截那一块，
 //! 交给 Windows.Media.Ocr。pot 是先截整屏铺在窗口里再裁，这里不用来回传整屏图。
 //!
+//! Windows 的 OCR 比 macOS 的 Vision 弱得多（见阶段 9）：识别前把选区放大 2 倍，
+//! 引擎也自己挑（优先中文，见 `create_engine`），不跟着系统语言走。
+//!
 //! 这里只返回一行行的文字，拼成一段（连字符、中英文空格）在 src/utils/joinOcrLines.ts 里做。
 //! 权限和取词一样不挡在截图前面：没授权时截到的其他窗口是空的、认不出字，前端这时才另查权限。
 
@@ -235,13 +238,14 @@ mod platform {
 mod platform {
     use std::path::PathBuf;
 
+    use windows::Globalization::Language;
     use windows::Graphics::Imaging::{BitmapPixelFormat, SoftwareBitmap};
     use windows::Media::Ocr::OcrEngine;
     use windows::Storage::Streams::DataWriter;
     use windows::Win32::Graphics::Gdi::{
-        BitBlt, CreateCompatibleBitmap, CreateCompatibleDC, DeleteDC, DeleteObject, GetDC,
-        GetDIBits, ReleaseDC, SelectObject, BITMAPINFO, BITMAPINFOHEADER, BI_RGB, DIB_RGB_COLORS,
-        SRCCOPY,
+        CreateCompatibleBitmap, CreateCompatibleDC, DeleteDC, DeleteObject, GetDC, GetDIBits,
+        ReleaseDC, SelectObject, SetStretchBltMode, StretchBlt, BITMAPINFO, BITMAPINFOHEADER,
+        BI_RGB, DIB_RGB_COLORS, HALFTONE, SRCCOPY,
     };
 
     use super::ScreenRegion;
@@ -268,29 +272,82 @@ mod platform {
         if region.width > max || region.height > max {
             return Err(format!("框选的区域太大（边长超过 {max} 像素）"));
         }
-        // 认哪种语言跟着系统的语言设置走；一个能用的语言包都没有时这里会失败
-        let engine = OcrEngine::TryCreateFromUserProfileLanguages().map_err(|_| {
-            "系统里没有 OCR 语言包：设置 → 时间和语言 → 语言，给英语或中文装上「光学字符识别」"
-                .to_string()
-        })?;
+        let engine = create_engine()?;
 
-        let pixels = capture(&region)?;
-        let bitmap = to_software_bitmap(&pixels, &region).map_err(|error| error.to_string())?;
+        // 放大 2 倍再交给引擎：Windows 的 OCR 是按扫描件（≥150 DPI）设计的，屏幕上 12–14px 的字
+        // 只有约 96 DPI，直接喂给它错得多；放大后超过引擎上限时就不放大
+        let scale = if region.width * 2 <= max && region.height * 2 <= max {
+            2
+        } else {
+            1
+        };
+        let width = region.width * scale;
+        let height = region.height * scale;
+        let pixels = capture(&region, scale)?;
+        let bitmap =
+            to_software_bitmap(&pixels, width, height).map_err(|error| error.to_string())?;
         recognize(&engine, &bitmap).map_err(|error| format!("识别失败：{error}"))
     }
 
-    /// 用 GDI 从屏幕上拷出选区，返回自上而下的 BGRA 像素
-    fn capture(region: &ScreenRegion) -> Result<Vec<u8>, String> {
-        let width = region.width as i32;
-        let height = region.height as i32;
-        let mut pixels = vec![0u8; region.width as usize * region.height as usize * 4];
+    /// 建识别引擎：能挑到中文就用中文，否则跟着系统语言，再不行用装了语言包的任意一个。
+    /// 必须自己挑语言：一个引擎只认一种语言、不会回退，`TryCreateFromUserProfileLanguages`
+    /// 只按用户语言列表取第一个装了语言包的——系统首选语言是英文时，中文整行认成乱码。
+    /// 中文优先（中文引擎认英文没问题），和 macOS 那边把 zh-Hans 排在 en-US 前面是同一个道理
+    fn create_engine() -> Result<OcrEngine, String> {
+        let languages =
+            OcrEngine::AvailableRecognizerLanguages().map_err(|error| error.to_string())?;
+        let count = languages.Size().map_err(|error| error.to_string())?;
+        // 装了的中文 OCR 语言里挑一个：简体（zh-Hans、zh-CN）优先，其次繁体等其他中文
+        let mut chinese: Option<Language> = None;
+        for index in 0..count {
+            let language = languages.GetAt(index).map_err(|error| error.to_string())?;
+            let tag = language
+                .LanguageTag()
+                .map_err(|error| error.to_string())?
+                .to_string_lossy()
+                .to_lowercase();
+            if tag.starts_with("zh-hans") || tag.starts_with("zh-cn") {
+                chinese = Some(language);
+                break;
+            }
+            if chinese.is_none() && tag.starts_with("zh") {
+                chinese = Some(language);
+            }
+        }
+        if let Some(language) = chinese {
+            if let Ok(engine) = OcrEngine::TryCreateFromLanguage(&language) {
+                return Ok(engine);
+            }
+        }
+        if let Ok(engine) = OcrEngine::TryCreateFromUserProfileLanguages() {
+            return Ok(engine);
+        }
+        if count > 0 {
+            let first = languages.GetAt(0).map_err(|error| error.to_string())?;
+            if let Ok(engine) = OcrEngine::TryCreateFromLanguage(&first) {
+                return Ok(engine);
+            }
+        }
+        Err(
+            "系统里没有 OCR 语言包：设置 → 时间和语言 → 语言，给英语或中文装上「光学字符识别」"
+                .to_string(),
+        )
+    }
+
+    /// 用 GDI 从屏幕上拷出选区、放大 scale 倍，返回自上而下的 BGRA 像素
+    fn capture(region: &ScreenRegion, scale: u32) -> Result<Vec<u8>, String> {
+        let width = (region.width * scale) as i32;
+        let height = (region.height * scale) as i32;
+        let mut pixels = vec![0u8; width as usize * height as usize * 4];
 
         unsafe {
             let screen = GetDC(None);
             let memory = CreateCompatibleDC(Some(screen));
             let bitmap = CreateCompatibleBitmap(screen, width, height);
             let previous = SelectObject(memory, bitmap.into());
-            let copied = BitBlt(
+            // HALFTONE 是 GDI 里质量最好的拉伸模式，默认的 COLORONCOLOR 是最近邻，放大后边缘是锯齿
+            SetStretchBltMode(memory, HALFTONE);
+            let copied = StretchBlt(
                 memory,
                 0,
                 0,
@@ -299,6 +356,8 @@ mod platform {
                 Some(screen),
                 region.x,
                 region.y,
+                region.width as i32,
+                region.height as i32,
                 SRCCOPY,
             );
             // GetDIBits 要求位图没有被选进任何 DC，先换回去
@@ -321,7 +380,7 @@ mod platform {
                 memory,
                 bitmap,
                 0,
-                region.height,
+                height as u32,
                 Some(pixels.as_mut_ptr().cast()),
                 &mut info,
                 DIB_RGB_COLORS,
@@ -331,7 +390,7 @@ mod platform {
             let _ = DeleteDC(memory);
             ReleaseDC(None, screen);
 
-            copied.map_err(|error| format!("截屏失败：{error}"))?;
+            copied.ok().map_err(|error| format!("截屏失败：{error}"))?;
             if rows == 0 {
                 return Err("截屏失败：读不出像素".to_string());
             }
@@ -346,7 +405,8 @@ mod platform {
 
     fn to_software_bitmap(
         pixels: &[u8],
-        region: &ScreenRegion,
+        width: u32,
+        height: u32,
     ) -> windows::core::Result<SoftwareBitmap> {
         let writer = DataWriter::new()?;
         writer.WriteBytes(pixels)?;
@@ -354,8 +414,8 @@ mod platform {
         SoftwareBitmap::CreateCopyFromBuffer(
             &buffer,
             BitmapPixelFormat::Bgra8,
-            region.width as i32,
-            region.height as i32,
+            width as i32,
+            height as i32,
         )
     }
 
