@@ -2,14 +2,17 @@
 //!
 //! 思路参考 pot 的 `system_ocr.rs`：macOS 上框选交给系统的 `screencapture -i`，识别用 Vision。
 //! 不同的是 pot 另带一个 Swift 小程序做识别，这里直接用 objc 调 Vision，不多带二进制。
-//! Windows 留到 8.2（见 docs/DEV_PLAN.md 阶段 8）。
+//!
+//! Windows 没有系统框选可用：前端开一个透明的全屏窗口让用户拖框（src/windows/snip/），
+//! 松手后藏起窗口、把选区的物理像素坐标交给 `recognize_screen_region`，这里用 GDI 只截那一块，
+//! 交给 Windows.Media.Ocr。pot 是先截整屏铺在窗口里再裁，这里不用来回传整屏图。
 //!
 //! 这里只返回一行行的文字，拼成一段（连字符、中英文空格）在 src/utils/joinOcrLines.ts 里做。
 //! 权限和取词一样不挡在截图前面：没授权时截到的其他窗口是空的、认不出字，前端这时才另查权限。
 
 use tauri::Manager;
 
-/// 框选一块屏幕并识别里面的文字，返回识别出的各行（从上到下）。
+/// 框选一块屏幕并识别里面的文字（macOS：框选用系统的），返回识别出的各行（从上到下）。
 /// 用户按 Esc 取消框选时返回 None；框了但没认出字返回空数组。
 ///
 /// 框选期间会一直阻塞到用户松手，所以扔到阻塞线程池上跑。
@@ -20,6 +23,25 @@ pub async fn recognize_screenshot(app: tauri::AppHandle) -> Result<Option<Vec<St
         .app_cache_dir()
         .map_err(|error| format!("找不到缓存目录：{error}"))?;
     tauri::async_runtime::spawn_blocking(move || platform::recognize_screenshot(dir))
+        .await
+        .map_err(|error| format!("截图识别出错：{error}"))?
+}
+
+/// 屏幕上的一块区域，物理像素，坐标相对整个虚拟桌面（副屏可能是负数）
+#[derive(serde::Deserialize)]
+#[cfg_attr(target_os = "macos", allow(dead_code))]
+pub struct ScreenRegion {
+    pub x: i32,
+    pub y: i32,
+    pub width: u32,
+    pub height: u32,
+}
+
+/// 截下屏幕上的一块并识别里面的文字（Windows：选区由前端的框选窗口给出）。
+/// 返回识别出的各行，没认出字返回空数组
+#[tauri::command]
+pub async fn recognize_screen_region(region: ScreenRegion) -> Result<Vec<String>, String> {
+    tauri::async_runtime::spawn_blocking(move || platform::recognize_screen_region(region))
         .await
         .map_err(|error| format!("截图识别出错：{error}"))?
 }
@@ -115,6 +137,12 @@ mod platform {
         lines.map(Some)
     }
 
+    pub(super) fn recognize_screen_region(
+        _region: super::ScreenRegion,
+    ) -> Result<Vec<String>, String> {
+        Err("macOS 上框选用系统截图，不走这条".to_string())
+    }
+
     /// 用 Vision 认出图里的文字，一个观测结果是一行，取每行可信度最高的候选
     // objc 的宏里有 cfg(feature = "cargo-clippy")，会触发 unexpected_cfgs 警告
     #[allow(unexpected_cfgs)]
@@ -207,6 +235,17 @@ mod platform {
 mod platform {
     use std::path::PathBuf;
 
+    use windows::Graphics::Imaging::{BitmapPixelFormat, SoftwareBitmap};
+    use windows::Media::Ocr::OcrEngine;
+    use windows::Storage::Streams::DataWriter;
+    use windows::Win32::Graphics::Gdi::{
+        BitBlt, CreateCompatibleBitmap, CreateCompatibleDC, DeleteDC, DeleteObject, GetDC,
+        GetDIBits, ReleaseDC, SelectObject, BITMAPINFO, BITMAPINFOHEADER, BI_RGB, DIB_RGB_COLORS,
+        SRCCOPY,
+    };
+
+    use super::ScreenRegion;
+
     pub(super) fn is_trusted() -> bool {
         true
     }
@@ -220,6 +259,121 @@ mod platform {
     }
 
     pub(super) fn recognize_screenshot(_dir: PathBuf) -> Result<Option<Vec<String>>, String> {
-        Err("Windows 上的截图翻译还没做".to_string())
+        Err("Windows 上框选由前端的框选窗口做，不走这条".to_string())
+    }
+
+    pub(super) fn recognize_screen_region(region: ScreenRegion) -> Result<Vec<String>, String> {
+        // 超过这个边长 OcrEngine 直接报错，提前给句人话
+        let max = OcrEngine::MaxImageDimension().map_err(|error| error.to_string())?;
+        if region.width > max || region.height > max {
+            return Err(format!("框选的区域太大（边长超过 {max} 像素）"));
+        }
+        // 认哪种语言跟着系统的语言设置走；一个能用的语言包都没有时这里会失败
+        let engine = OcrEngine::TryCreateFromUserProfileLanguages().map_err(|_| {
+            "系统里没有 OCR 语言包：设置 → 时间和语言 → 语言，给英语或中文装上「光学字符识别」"
+                .to_string()
+        })?;
+
+        let pixels = capture(&region)?;
+        let bitmap = to_software_bitmap(&pixels, &region).map_err(|error| error.to_string())?;
+        recognize(&engine, &bitmap).map_err(|error| format!("识别失败：{error}"))
+    }
+
+    /// 用 GDI 从屏幕上拷出选区，返回自上而下的 BGRA 像素
+    fn capture(region: &ScreenRegion) -> Result<Vec<u8>, String> {
+        let width = region.width as i32;
+        let height = region.height as i32;
+        let mut pixels = vec![0u8; region.width as usize * region.height as usize * 4];
+
+        unsafe {
+            let screen = GetDC(None);
+            let memory = CreateCompatibleDC(Some(screen));
+            let bitmap = CreateCompatibleBitmap(screen, width, height);
+            let previous = SelectObject(memory, bitmap.into());
+            let copied = BitBlt(
+                memory,
+                0,
+                0,
+                width,
+                height,
+                Some(screen),
+                region.x,
+                region.y,
+                SRCCOPY,
+            );
+            // GetDIBits 要求位图没有被选进任何 DC，先换回去
+            SelectObject(memory, previous);
+
+            let mut info = BITMAPINFO {
+                bmiHeader: BITMAPINFOHEADER {
+                    biSize: size_of::<BITMAPINFOHEADER>() as u32,
+                    biWidth: width,
+                    // 负数表示自上而下，和 SoftwareBitmap 的行序一致
+                    biHeight: -height,
+                    biPlanes: 1,
+                    biBitCount: 32,
+                    biCompression: BI_RGB.0,
+                    ..Default::default()
+                },
+                ..Default::default()
+            };
+            let rows = GetDIBits(
+                memory,
+                bitmap,
+                0,
+                region.height,
+                Some(pixels.as_mut_ptr().cast()),
+                &mut info,
+                DIB_RGB_COLORS,
+            );
+
+            let _ = DeleteObject(bitmap.into());
+            let _ = DeleteDC(memory);
+            ReleaseDC(None, screen);
+
+            copied.map_err(|error| format!("截屏失败：{error}"))?;
+            if rows == 0 {
+                return Err("截屏失败：读不出像素".to_string());
+            }
+        }
+
+        // GDI 拷出来的 alpha 是 0，按全透明交给 OCR 会被当成空白
+        for pixel in pixels.as_chunks_mut::<4>().0 {
+            pixel[3] = 255;
+        }
+        Ok(pixels)
+    }
+
+    fn to_software_bitmap(
+        pixels: &[u8],
+        region: &ScreenRegion,
+    ) -> windows::core::Result<SoftwareBitmap> {
+        let writer = DataWriter::new()?;
+        writer.WriteBytes(pixels)?;
+        let buffer = writer.DetachBuffer()?;
+        SoftwareBitmap::CreateCopyFromBuffer(
+            &buffer,
+            BitmapPixelFormat::Bgra8,
+            region.width as i32,
+            region.height as i32,
+        )
+    }
+
+    /// 一个 OcrLine 是一行。中文的行里每个字之间都带空格，交给 joinOcrLines 去掉
+    fn recognize(
+        engine: &OcrEngine,
+        bitmap: &SoftwareBitmap,
+    ) -> windows::core::Result<Vec<String>> {
+        let result = engine.RecognizeAsync(bitmap)?.join()?;
+        let lines = result.Lines()?;
+        let mut texts = Vec::with_capacity(lines.Size()? as usize);
+        for index in 0..lines.Size()? {
+            let text = lines.GetAt(index)?.Text()?.to_string_lossy();
+            let text = text.trim();
+            if !text.is_empty() {
+                texts.push(text.to_string());
+            }
+        }
+        Ok(texts)
     }
 }

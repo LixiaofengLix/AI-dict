@@ -36,6 +36,13 @@ describe('joinOcrLines', () => {
     expect(joinOcrLines(['go over', '是短语动词'])).toBe('go over是短语动词');
   });
 
+  it('汉字之间的空格去掉（Windows OCR 每个字之间都带空格），中英文之间的保留', () => {
+    expect(joinOcrLines(['团 队 在 发 布 前 把 数 据 过 了 一 遍 。'])).toBe(
+      '团队在发布前把数据过了一遍。',
+    );
+    expect(joinOcrLines(['它 和 go 组 成 短 语 动 词'])).toBe('它和 go 组成短语动词');
+  });
+
   it('空行和首尾空白去掉，全空给空串', () => {
     expect(joinOcrLines(['  went  ', '', '   '])).toBe('went');
     expect(joinOcrLines([])).toBe('');

@@ -55,3 +55,12 @@ objc = "0.2"
 [target.'cfg(target_os = "windows")'.dependencies]
 get-selected-text = "0.1.6"
 windows-sys = { version = "0.59", features = ["Win32_UI_Input_KeyboardAndMouse"] }
+# 截图翻译（见 src/ocr.rs）：GDI 截选区 + Windows.Media.Ocr。OCR 是 WinRT 接口，windows-sys 没有，
+# 用和 Tauri 依赖树里同一版的 windows，不多编一份
+windows = { version = "0.62", features = [
+  "Foundation_Collections",
+  "Graphics_Imaging",
+  "Media_Ocr",
+  "Storage_Streams",
+  "Win32_Graphics_Gdi",
+] }

@@ -3,6 +3,7 @@ import ReactDOM from 'react-dom/client';
 import { getCurrentWindow } from '@tauri-apps/api/window';
 import MainWindow from './windows/main/MainWindow';
 import PopupWindow from './windows/popup/PopupWindow';
+import SnipWindow from './windows/snip/SnipWindow';
 import { getDb } from './services/db';
 import './index.css';
 
@@ -12,10 +13,12 @@ getDb().catch((error: unknown) => {
   console.error('打开数据库失败', error);
 });
 
-// 两个窗口共用同一份前端代码，按窗口 label（在 src-tauri/tauri.conf.json 里定义）决定渲染谁
+// 几个窗口共用同一份前端代码，按窗口 label 决定渲染谁。main、popup 在 src-tauri/tauri.conf.json
+// 里定义；snip（Windows 截图框选）用到时才由 services/window 建
 const roots: Record<string, React.ComponentType> = {
   main: MainWindow,
   popup: PopupWindow,
+  snip: SnipWindow,
 };
 
 const label = getCurrentWindow().label;

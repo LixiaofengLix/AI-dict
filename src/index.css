@@ -45,6 +45,7 @@ body {
   --color-ink-soft: #a3a09a;
   --color-ink-faint: #b9b5ae;
   --color-ink-mute: #cfcbc4; /* 次要区块标题前的小方块 */
+  --color-scrim: rgb(17 17 17 / 0.28); /* 截图框选（Windows）时压暗屏幕的遮罩 */
 
   --text-title: 22px; /* 页面标题、词头 */
   --text-body: 13px; /* 卡片正文 */

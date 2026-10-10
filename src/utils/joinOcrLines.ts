@@ -12,10 +12,13 @@ const CJK = /[\p{Script=Han}\u3000-\u303f\uff00-\uffef]/u;
 const HYPHEN_END = /\p{L}-$/u;
 const LOWER_START = /^\p{Ll}/u;
 
+/** 两个中文字符（或全角标点）之间的空白：Windows 的 OCR 会在每个汉字之间都插一个空格 */
+const SPACE_BETWEEN_CJK = new RegExp(`(?<=${CJK.source})\\s+(?=${CJK.source})`, 'gu');
+
 export function joinOcrLines(lines: readonly string[]): string {
   let text = '';
   for (const raw of lines) {
-    const line = raw.trim();
+    const line = raw.trim().replace(SPACE_BETWEEN_CJK, '');
     if (!line) continue;
     if (!text) {
       text = line;

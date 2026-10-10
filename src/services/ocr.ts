@@ -2,7 +2,7 @@ import { invoke } from '@tauri-apps/api/core';
 import { joinOcrLines } from '../utils/joinOcrLines';
 
 /**
- * 截图翻译：弹出系统框选，框完用系统 OCR 认出里面的文字，拼成一段返回。
+ * 截图翻译（macOS）：弹出系统框选，框完用系统 OCR 认出里面的文字，拼成一段返回。
  *
  * 用户按 Esc 取消框选时返回 null；框了但没认出字返回空字符串。
  * 没有屏幕录制权限时截到的其他窗口是空的，同样是空字符串，不会报错——
@@ -11,6 +11,22 @@ import { joinOcrLines } from '../utils/joinOcrLines';
 export async function recognizeScreenshot(): Promise<string | null> {
   const lines = await invoke<string[] | null>('recognize_screenshot');
   return lines === null ? null : joinOcrLines(lines);
+}
+
+/** 屏幕上的一块区域，物理像素，坐标相对整个虚拟桌面（副屏可能是负数） */
+export interface ScreenRegion {
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+}
+
+/**
+ * 截下屏幕上的一块并识别文字，拼成一段返回；没认出字返回空字符串。
+ * Windows 用：没有系统框选，选区由框选窗口（windows/snip）给出，见 services/window 的 pickScreenRegion。
+ */
+export async function recognizeScreenRegion(region: ScreenRegion): Promise<string> {
+  return joinOcrLines(await invoke<string[]>('recognize_screen_region', { region }));
 }
 
 /**

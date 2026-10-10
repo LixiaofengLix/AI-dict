@@ -1,10 +1,12 @@
 {
   "$schema": "../gen/schemas/desktop-schema.json",
   "identifier": "default",
-  "description": "main / popup 两个窗口的权限：基础 + 弹窗定位、隐藏、置顶、拖动、叫主窗口 + 数据库 + AI 请求",
-  "windows": ["main", "popup"],
+  "description": "main / popup / snip 三个窗口的权限：基础 + 弹窗定位、隐藏、置顶、拖动、叫主窗口 + 数据库 + AI 请求；Windows 截图翻译要现建框选窗口（snip）并按显示器设尺寸",
+  "windows": ["main", "popup", "snip"],
   "permissions": [
     "core:default",
+    "core:webview:allow-create-webview-window",
+    "core:window:allow-set-size",
     "core:window:allow-show",
     "core:window:allow-hide",
     "core:window:allow-unminimize",

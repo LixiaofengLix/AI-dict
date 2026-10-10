@@ -1,14 +1,23 @@
-import { emitTo } from '@tauri-apps/api/event';
+import { emit, emitTo, listen } from '@tauri-apps/api/event';
 import { WebviewWindow } from '@tauri-apps/api/webviewWindow';
 import {
   cursorPosition,
+  getCurrentWindow,
   monitorFromPoint,
   PhysicalPosition,
+  PhysicalSize,
   primaryMonitor,
   type Monitor,
 } from '@tauri-apps/api/window';
+import { delay } from '../utils/async';
+import { isMac } from '../utils/platform';
 import { centerInWorkArea, placeNearCursor, type Rect } from '../utils/popupPosition';
-import { isScreenCaptureTrusted, recognizeScreenshot } from './ocr';
+import {
+  isScreenCaptureTrusted,
+  recognizeScreenRegion,
+  recognizeScreenshot,
+  type ScreenRegion,
+} from './ocr';
 import { getSelectedText, isAccessibilityTrusted } from './selection';
 
 /** 弹窗的三种触发方式：划词取词、手动输入、截图识别 */
@@ -148,7 +157,13 @@ export async function showMainWindow(page?: MainPage): Promise<void> {
 /** 框选一块屏幕并识别文字；用户取消时返回 null，失败时把错误信息一起带给弹窗 */
 async function takeScreenshot(): Promise<PopupTriggerPayload | null> {
   try {
-    const text = await recognizeScreenshot();
+    let text: string | null;
+    if (isMac) {
+      text = await recognizeScreenshot();
+    } else {
+      const region = await pickScreenRegion();
+      text = region ? await recognizeScreenRegion(region) : null;
+    }
     if (text === null) return null;
     // 认出了字说明权限是通的，不用再问
     const trusted = text ? true : await isScreenCaptureTrusted();
@@ -157,6 +172,72 @@ async function takeScreenshot(): Promise<PopupTriggerPayload | null> {
     console.error('截图识别失败', error);
     return { action: 'ocr', ocr: { ok: false, error: String(error) } };
   }
+}
+
+/** 框选窗口（Windows）松手或取消时发的事件，payload 是 SnipResultPayload */
+export const SNIP_RESULT_EVENT = 'snip-result';
+
+export interface SnipResultPayload {
+  /** 框出的区域；Esc、右键、切走或框得太小时为 null */
+  region: ScreenRegion | null;
+}
+
+/** 框选窗口藏起来之后等这么久再截屏，免得把还没褪掉的遮罩一起截进去 */
+const SNIP_HIDE_DELAY = 80;
+
+/**
+ * Windows 上让用户框选一块屏幕：在光标所在的显示器上盖一层全屏的框选窗口（windows/snip），
+ * 等它报回选区。窗口第一次用时才建，之后藏起来复用；macOS 用系统框选，不会走到这里。
+ */
+async function pickScreenRegion(): Promise<ScreenRegion | null> {
+  const cursor = await cursorPosition();
+  const monitor = (await monitorFromPoint(cursor.x, cursor.y)) ?? (await primaryMonitor());
+  if (!monitor) return null;
+  const snip = (await WebviewWindow.getByLabel('snip')) ?? (await createSnipWindow());
+
+  let resolveRegion: (region: ScreenRegion | null) => void = () => {};
+  const result = new Promise<ScreenRegion | null>((resolve) => (resolveRegion = resolve));
+  // 先挂好监听再显示，免得用户手快、结果先到
+  const unlisten = await listen<SnipResultPayload>(SNIP_RESULT_EVENT, (event) =>
+    resolveRegion(event.payload.region),
+  );
+
+  try {
+    await snip.setPosition(new PhysicalPosition(monitor.position.x, monitor.position.y));
+    await snip.setSize(new PhysicalSize(monitor.size.width, monitor.size.height));
+    await snip.show();
+    await snip.setFocus();
+    const region = await result;
+    if (region) await delay(SNIP_HIDE_DELAY);
+    return region;
+  } finally {
+    unlisten();
+  }
+}
+
+/** 框选窗口里调：先把自己藏起来，再把选区（取消时为 null）报给等着的 pickScreenRegion */
+export async function finishSnip(region: ScreenRegion | null): Promise<void> {
+  await getCurrentWindow().hide();
+  await emit(SNIP_RESULT_EVENT, { region } satisfies SnipResultPayload);
+}
+
+/** 建框选窗口：透明、无边框、置顶、不进任务栏，尺寸在每次显示前按显示器设 */
+function createSnipWindow(): Promise<WebviewWindow> {
+  return new Promise((resolve, reject) => {
+    const snip = new WebviewWindow('snip', {
+      url: 'index.html',
+      title: '截图翻译',
+      decorations: false,
+      transparent: true,
+      shadow: false,
+      alwaysOnTop: true,
+      skipTaskbar: true,
+      resizable: false,
+      visible: false,
+    });
+    void snip.once('tauri://created', () => resolve(snip));
+    void snip.once('tauri://error', (event) => reject(new Error(String(event.payload))));
+  });
 }
 
 /** 取当前选中的文字，失败时把错误信息一起带给弹窗 */
