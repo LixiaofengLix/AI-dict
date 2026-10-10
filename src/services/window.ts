@@ -5,20 +5,12 @@ import {
   getCurrentWindow,
   monitorFromPoint,
   PhysicalPosition,
-  PhysicalSize,
   primaryMonitor,
   type Monitor,
 } from '@tauri-apps/api/window';
-import { delay } from '../utils/async';
 import { isMac } from '../utils/platform';
 import { centerInWorkArea, placeNearCursor, type Rect } from '../utils/popupPosition';
-import {
-  captureScreenRegion,
-  captureScreenshot,
-  isScreenCaptureTrusted,
-  recognizeText,
-  type ScreenRegion,
-} from './ocr';
+import { captureScreenshot, isScreenCaptureTrusted, recognizeText } from './ocr';
 import { getSelectedText, isAccessibilityTrusted } from './selection';
 
 /** 弹窗的三种触发方式：划词取词、手动输入、截图识别 */
@@ -158,14 +150,9 @@ export async function showMainWindow(page?: MainPage): Promise<void> {
 /** 框选一块屏幕截出图、认出文字；用户取消时返回 null，失败时把错误信息一起带给弹窗 */
 async function takeScreenshot(): Promise<PopupTriggerPayload | null> {
   try {
-    // 截图和识别分两步：图先拿在手里，识别走哪条由 services/ocr 定，换一条不用重新框选
-    let image: string | null;
-    if (isMac) {
-      image = await captureScreenshot();
-    } else {
-      const region = await pickScreenRegion();
-      image = region ? await captureScreenRegion(region) : null;
-    }
+    // 图先拿在手里：Windows 上框选窗口自己截屏、裁好（见 pickScreenImage），macOS 走系统框选。
+    // 识别走哪条路由 services/ocr 定，换一条不用重新框选
+    const image = isMac ? await captureScreenshot() : await pickScreenImage();
     if (image === null) return null;
     const text = await recognizeText(image);
     // 认出了字说明权限是通的，不用再问
@@ -181,66 +168,77 @@ async function takeScreenshot(): Promise<PopupTriggerPayload | null> {
 export const SNIP_RESULT_EVENT = 'snip-result';
 
 export interface SnipResultPayload {
-  /** 框出的区域；Esc、右键、切走或框得太小时为 null */
-  region: ScreenRegion | null;
+  /** 裁好的选区图（PNG base64）；Esc、右键、切走或框得太小时为 null */
+  image: string | null;
 }
 
-/** 框选窗口藏起来之后等这么久再截屏，免得把还没褪掉的遮罩一起截进去 */
-const SNIP_HIDE_DELAY = 80;
-
 /**
- * Windows 上让用户框选一块屏幕：在光标所在的显示器上盖一层全屏的框选窗口（windows/snip），
- * 等它报回选区。窗口第一次用时才建，之后藏起来复用；macOS 用系统框选，不会走到这里。
+ * Windows 上让用户框选一块屏幕：在光标所在的显示器上开一个全屏的框选窗口（windows/snip），
+ * 窗口自己截屏铺图、框选、裁剪，把裁好的图报回来；取消时返回 null。macOS 用系统框选，不走这里。
  */
-async function pickScreenRegion(): Promise<ScreenRegion | null> {
+async function pickScreenImage(): Promise<string | null> {
   const cursor = await cursorPosition();
   const monitor = (await monitorFromPoint(cursor.x, cursor.y)) ?? (await primaryMonitor());
   if (!monitor) return null;
-  const snip = (await WebviewWindow.getByLabel('snip')) ?? (await createSnipWindow());
 
-  let resolveRegion: (region: ScreenRegion | null) => void = () => {};
-  const result = new Promise<ScreenRegion | null>((resolve) => (resolveRegion = resolve));
-  // 先挂好监听再显示，免得用户手快、结果先到
+  let resolveImage: (image: string | null) => void = () => {};
+  const result = new Promise<string | null>((resolve) => (resolveImage = resolve));
+  // 先挂好监听再建窗口，免得用户手快、结果先到
   const unlisten = await listen<SnipResultPayload>(SNIP_RESULT_EVENT, (event) =>
-    resolveRegion(event.payload.region),
+    resolveImage(event.payload.image),
   );
 
   try {
-    await snip.setPosition(new PhysicalPosition(monitor.position.x, monitor.position.y));
-    await snip.setSize(new PhysicalSize(monitor.size.width, monitor.size.height));
-    await snip.show();
-    await snip.setFocus();
-    const region = await result;
-    if (region) await delay(SNIP_HIDE_DELAY);
-    return region;
+    await createSnipWindow(monitor);
+    return await result;
   } finally {
     unlisten();
   }
 }
 
-/** 框选窗口里调：先把自己藏起来，再把选区（取消时为 null）报给等着的 pickScreenRegion */
-export async function finishSnip(region: ScreenRegion | null): Promise<void> {
-  await getCurrentWindow().hide();
-  await emit(SNIP_RESULT_EVENT, { region } satisfies SnipResultPayload);
-}
+/**
+ * 建框选窗口：全屏、无边框、置顶、不进任务栏，落在给定的显示器上，先藏着——
+ * 页面自己截完屏、把图铺好才显示自己（见 windows/snip），所以不会先闪一帧没画完的窗口。
+ * 每次框选都新建、用完就关，不留跨次的状态（pot 也是这么做的）。
+ */
+async function createSnipWindow(monitor: Monitor): Promise<WebviewWindow> {
+  // 万一有上次遗留的框选窗口（窗口里的脚本崩了、没走到销毁那一步），先清掉，
+  // 不然建同名的会报 "already exists"
+  const leftover = await WebviewWindow.getByLabel('snip');
+  if (leftover) await leftover.destroy();
 
-/** 建框选窗口：透明、无边框、置顶、不进任务栏，尺寸在每次显示前按显示器设 */
-function createSnipWindow(): Promise<WebviewWindow> {
   return new Promise((resolve, reject) => {
     const snip = new WebviewWindow('snip', {
       url: 'index.html',
       title: '截图翻译',
       decorations: false,
+      // 透明：不是为了让底下的东西透出来（窗口里铺的是整屏的图），而是为了"图还没画好"的
+      // 那一两帧不闪白——不透明的窗口显示早了就是一块整屏的白。pot 的窗口也都是透明的
       transparent: true,
       shadow: false,
       alwaysOnTop: true,
       skipTaskbar: true,
       resizable: false,
+      fullscreen: true,
       visible: false,
+      // 全屏铺在哪块显示器看窗口的位置；创建时按逻辑像素给，多显示器缩放不同时下面再按物理像素摆一次
+      x: Math.round(monitor.position.x / monitor.scaleFactor),
+      y: Math.round(monitor.position.y / monitor.scaleFactor),
     });
-    void snip.once('tauri://created', () => resolve(snip));
+    void snip.once('tauri://created', async () => {
+      await snip.setPosition(new PhysicalPosition(monitor.position.x, monitor.position.y));
+      resolve(snip);
+    });
     void snip.once('tauri://error', (event) => reject(new Error(String(event.payload))));
   });
+}
+
+/** 框选窗口里调：把裁好的图（取消时为 null）报给等着的 pickScreenImage，然后销毁自己 */
+export async function finishSnip(image: string | null): Promise<void> {
+  await emit(SNIP_RESULT_EVENT, { image } satisfies SnipResultPayload);
+  // 用 destroy 不能用 close：应用里"关窗只隐藏"（见 lib.rs 的 on_window_event，主窗口和弹窗是这么设计的），
+  // close 只会把它藏起来，下次框选再建就报 "a webview with label `snip` already exists"
+  await getCurrentWindow().destroy();
 }
 
 /** 取当前选中的文字，失败时把错误信息一起带给弹窗 */

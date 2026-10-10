@@ -19,7 +19,7 @@ export interface ScreenRegion {
 
 /**
  * 截下屏幕上的一块（Windows），返回截图的 PNG base64。
- * 选区由框选窗口（windows/snip）给出，见 services/window 的 pickScreenRegion。
+ * 选区由框选窗口（windows/snip）给出，见 services/window 的 pickScreenImage。
  */
 export async function captureScreenRegion(region: ScreenRegion): Promise<string> {
   return invoke<string>('capture_screen_region', { region });
