@@ -15,6 +15,8 @@ type Props = {
   sentence: string;
   /** 句子模式下整段的译文，跟在语境释义卡片下面 */
   translation?: string;
+  /** 单词模式：双击词头改完回车后的新文字 */
+  onEdit?: (text: string) => void;
 };
 
 /**
@@ -23,7 +25,7 @@ type Props = {
  * 点词就并行请求语境释义和 AI 词典（第 3 节的取舍）：词典结果词头和星标都要用。
  * 句子模式换词时由 SentenceView 换 key 整块重新挂载：上一个词还在跑的请求跟着取消。
  */
-export function WordPanel({ word, sentence, translation }: Props) {
+export function WordPanel({ word, sentence, translation, onEdit }: Props) {
   // 两个"重新生成"各记各的：重试失败的结果都不会进缓存，直接加 1 就行
   const [contextGeneration, setContextGeneration] = useState(0);
   const [dictGeneration, setDictGeneration] = useState(0);
@@ -52,7 +54,7 @@ export function WordPanel({ word, sentence, translation }: Props) {
       onRefreshDict={() => setDictGeneration((count) => count + 1)}
       header={
         <div className="flex shrink-0 items-center gap-2">
-          <WordHeader query={word} result={dict} compact={Boolean(sentence)} />
+          <WordHeader query={word} result={dict} compact={Boolean(sentence)} onEdit={onEdit} />
           <StarButton details={starDetails} sentence={sentence} />
         </div>
       }

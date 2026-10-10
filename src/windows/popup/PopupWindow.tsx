@@ -17,6 +17,7 @@ import {
   requestAccessibilityPermission,
 } from '../../services/selection';
 import { classifyInput } from '../../utils/classifyInput';
+import { isImeEnter } from '../../utils/keyboard';
 
 /** 失焦后等这么久再关：Windows 上拖动窗口会短暂失焦，立刻关会误伤（pot 踩过这个坑） */
 const BLUR_CLOSE_DELAY = 100;
@@ -26,6 +27,8 @@ export default function PopupWindow() {
   const [trigger, setTrigger] = useState<PopupTriggerPayload | null>(null);
   const [draft, setDraft] = useState('');
   const [submitted, setSubmitted] = useState('');
+  // 划词取到的文字被用户双击改过之后的版本；null 表示没改过
+  const [edited, setEdited] = useState<string | null>(null);
   // 每呼出一次加一，给输入框当 key 用：弹窗是复用的同一个窗口，组件不会重新挂载，
   // 不换 key 的话 autoFocus 只有第一次生效——上次要是在按钮上收的场，下次呼出来光标还在按钮上
   const [summonCount, setSummonCount] = useState(0);
@@ -41,6 +44,7 @@ export default function PopupWindow() {
       // 每次触发都是一次新的查询：上一次输的内容和结果都清掉
       setDraft('');
       setSubmitted('');
+      setEdited(null);
       setSummonCount((count) => count + 1);
     });
     return () => {
@@ -113,14 +117,18 @@ export default function PopupWindow() {
       // 没授权和"没选中"不是一回事：前者给授权引导（见 2.2）
       if (!selection.text && !selection.trusted) return <PermissionView />;
       if (!selection.text) return renderInput('没选中文字，直接输入也一样。');
-      return renderResult(selection.text);
+      return renderResult(edited ?? selection.text, setEdited);
     }
 
     return renderInput();
   }
 
-  /** 输入翻译这一屏：输入框在上，提交的文本结果显示在下面 */
+  /**
+   * 输入翻译这一屏：还没提交时只有输入框（和取词失败的提示）；提交后输入框收起来，
+   * 只留结果，想改就和划词一样双击原句框或词头。
+   */
   function renderInput(note?: string) {
+    if (submitted) return renderResult(submitted, setSubmitted);
     return (
       <>
         <InputView
@@ -130,13 +138,16 @@ export default function PopupWindow() {
           onChange={setDraft}
           onSubmit={submit}
         />
-        {submitted ? renderResult(submitted) : <InputHint />}
+        <InputHint />
       </>
     );
   }
 
-  /** 取到 / 输入的文字按 5.1 分类渲染：单词和词组出词卡，句子和中文出翻译界面 */
-  function renderResult(text: string) {
+  /**
+   * 取到 / 输入的文字按 5.1 分类渲染：单词和词组出词卡，句子和中文出翻译界面。
+   * onEdit：双击原句框（或单词模式的词头）改完回车后的新文字，重新分类、重新查。
+   */
+  function renderResult(text: string, onEdit: (text: string) => void) {
     // 配置还在读（毫秒级）时先空着：没配置的情况 renderBody 已经拦下了，这里只是别闪一下
     if (configured !== true) return null;
     if (classifyInput(text) === 'word') {
@@ -144,10 +155,10 @@ export default function PopupWindow() {
       const word = text.trim().replace(/^[^\p{L}\p{N}]+|[^\p{L}\p{N}]+$/gu, '');
       // 单词模式：没有原句，语境释义和它所在的卡片都不出现（4.2）
       // key 用词本身：换一个词整卡重挂载，Tab 的加载状态和"重新生成"次数从头开始
-      return <WordPanel key={word} word={word} sentence="" />;
+      return <WordPanel key={word} word={word} sentence="" onEdit={onEdit} />;
     }
     // 同理：换一段文字整段重挂载，流式内容和"重新生成"次数不残留
-    return <SentenceView key={text} text={text} />;
+    return <SentenceView key={text} text={text} onEdit={onEdit} />;
   }
 
   return (
@@ -206,11 +217,8 @@ function InputView({
         onChange={(event) => onChange(event.target.value)}
         onKeyDown={(event) => {
           if (event.key !== 'Enter' || event.shiftKey) return;
-          // 输入法里回车是选词，不能当成提交。WebKit（WKWebView）有个坑：确认候选词那一下
-          // compositionend 先于 keydown 到，等 keydown 时 isComposing 已经是 false 了，
-          // 只有 keyCode 229（VK_PROCESSKEY，被输入法处理过的键）还认得出它。
-          // 所以两个都要看，靠记 compositionstart/end 的状态没用（WebKit bug 165004）
-          if (event.nativeEvent.isComposing || event.nativeEvent.keyCode === 229) return;
+          // 输入法里回车是选词，不能当成提交
+          if (isImeEnter(event.nativeEvent)) return;
           event.preventDefault();
           onSubmit();
         }}

@@ -15,7 +15,14 @@ import { type Block, parseSections, splitBold } from './parseSections';
  * 句子模式（DEV_PLAN 5.1~5.3，样张 01~03）：原句（词可点）+ 译文，点词后译文区换成词卡。
  * 英译中只有中文翻译；中文输入走中译英，是英文翻译 + 句意解释（讲选词），词也不可点。
  */
-export function SentenceView({ text }: { text: string }) {
+export function SentenceView({
+  text,
+  onEdit,
+}: {
+  text: string;
+  /** 双击原句框改完回车后的新文字 */
+  onEdit?: (text: string) => void;
+}) {
   const [generation, setGeneration] = useState(0);
   // 点的那个词、它所在的句子和它在原句里的位置（只有它高亮，同词的另一处不高亮）
   const [picked, setPicked] = useState<{ word: string; sentence: string; index: number } | null>(
@@ -46,6 +53,8 @@ export function SentenceView({ text }: { text: string }) {
       <OriginalSentence
         text={text}
         selectedIndex={picked?.index ?? null}
+        onEdit={onEdit}
+        onEditStart={() => setPicked(null)}
         // 中文输入只整句翻译，不做句中取词（5.1）：不传回调就是纯文字
         onWordClick={
           direction === 'toChinese'
