@@ -1,3 +1,4 @@
+import { wordTitleClass } from '../../../components/styles';
 import type { AiDictEntry } from '../../../types/ai';
 import type { AiResult } from '../hooks/useAiWordResult';
 import { PhoneticPill } from './PhoneticPill';
@@ -7,13 +8,15 @@ type Props = {
   query: string;
   /** AI 词典结果：原形、音标从这来（6.1 起点词就请求，见 DEV_PLAN 第 3 节） */
   result: AiResult<AiDictEntry>;
+  /** 句子模式和生词详情里小一号（样张 02、11 是 20px，单词模式 22px） */
+  compact?: boolean;
 };
 
 /** 词头：原形（点是变形时显示 went → go）、音标 + 发音；收藏星标由外面拼在这行尾 */
-export function WordHeader({ query, result }: Props) {
+export function WordHeader({ query, result, compact = false }: Props) {
   if (result.status !== 'done') {
     // 词典没好时先显示点的那个词，星标那边会是禁用状态
-    return <p className="min-w-0 flex-1 truncate text-title font-semibold text-ink">{query}</p>;
+    return <h2 className={wordTitleClass(compact)}>{query}</h2>;
   }
 
   const entry = result.data;
@@ -21,17 +24,15 @@ export function WordHeader({ query, result }: Props) {
   const inflected = query.toLowerCase() !== entry.word.toLowerCase();
 
   return (
-    <div className="flex min-w-0 flex-1 items-center gap-2.5">
-      <p className="min-w-0 truncate text-title font-semibold text-ink">
-        {inflected ? (
-          <>
-            <span className="font-normal text-ink-soft">{query}</span> → {entry.word}
-          </>
-        ) : (
-          entry.word
-        )}
-      </p>
+    <h2 className={wordTitleClass(compact)}>
+      {inflected ? (
+        <>
+          <span className="font-normal text-ink-soft">{query}</span>
+          <span className="text-[14px] text-ink-soft">→</span>
+        </>
+      ) : null}
+      {entry.word}
       <PhoneticPill word={entry.word} phonetic={entry.phonetic} />
-    </div>
+    </h2>
   );
 }

@@ -36,11 +36,6 @@ export function mockContextMeaning(word: string, sentence: string): string {
 
 const HOSPITAL = 'I was a hospital in myself.';
 
-const MEANINGS: Record<string, string> = {
-  [HOSPITAL]:
-    '作者在前文把医书上的病几乎"确诊"了个遍，这里用夸张的说法自嘲：自己身上的病多到可以凑成一家医院，医学生不用去医院实习，围着他转一圈就够了。',
-};
-
 const TRANSLATIONS: Record<string, string> = {
   [HOSPITAL]: '我本身就是一家医院。',
   'There were four of us—George, and William Samuel Harris, and myself, and Montmorency.':
@@ -51,7 +46,7 @@ const TRANSLATIONS: Record<string, string> = {
 
 const preview = (text: string) => (text.length > 60 ? `${text.slice(0, 60)}…` : text);
 
-/** 翻译的回答格式：简单 Markdown，分"## 中文翻译 / ## 英文翻译"和"## 句意解释"两节 */
+/** 翻译的回答格式：简单 Markdown，英译中只有"## 中文翻译"，中译英是"## 英文翻译"和"## 句意解释"两节 */
 export function mockTranslation(text: string, direction: TranslateDirection): string {
   if (direction === 'toEnglish') {
     return [
@@ -59,15 +54,9 @@ export function mockTranslation(text: string, direction: TranslateDirection): st
       `（mock translation）${text}`,
       '',
       '## 句意解释',
-      `（mock）这里会说明译文里为什么这么选词："${preview(text)}"`,
+      `- （mock）这里会说明译文里为什么这么选词："${preview(text)}"`,
     ].join('\n');
   }
   const key = text.trim();
-  return [
-    '## 中文翻译',
-    TRANSLATIONS[key] ?? `（mock 翻译）${text}`,
-    '',
-    '## 句意解释',
-    MEANINGS[key] ?? `（mock）这里会结合上下文解释所选句子的意思："${preview(text)}"`,
-  ].join('\n');
+  return ['## 中文翻译', TRANSLATIONS[key] ?? `（mock 翻译）${text}`].join('\n');
 }

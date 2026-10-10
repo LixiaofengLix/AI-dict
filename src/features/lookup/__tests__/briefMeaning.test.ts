@@ -10,7 +10,7 @@ const sense = (pos: string, meaning: string): AiDictSense => ({
   exampleTranslation: '',
 });
 
-const entry = (senses: AiDictSense[]) => ({ word: 'go', phonetic: null, tags: [], senses });
+const entry = (senses: AiDictSense[]) => ({ word: 'go', phonetic: null, senses });
 
 describe('briefMeaning', () => {
   it('相邻同词性合并，只取前三条', () => {

@@ -1,4 +1,5 @@
 import { useMemo } from 'react';
+import { CARD } from '../../components/styles';
 import { splitWords } from './splitWords';
 
 type Props = {
@@ -13,32 +14,37 @@ type Props = {
 };
 
 /**
- * 原句（5.2）：每个词单独渲染成可点的按钮，标点、空格是普通文字，
- * 排版和原文一样（分词只是把词包进按钮里，不改字）。
+ * 原句（5.2，样张 .card.soft + .sentence）：每个词单独渲染成可点的按钮，带虚线下划线，
+ * 点了的词青绿淡底；标点、空格是普通文字，排版和原文一样（分词只是把词包进按钮里，不改字）。
  */
 export function OriginalSentence({ text, selectedIndex = null, onWordClick }: Props) {
   const parts = useMemo(() => (onWordClick ? splitWords(text) : []), [text, onWordClick]);
 
   return (
-    <p className="max-h-40 shrink-0 overflow-y-auto rounded-card border border-line bg-page px-3 py-2 text-footnote leading-relaxed break-words whitespace-pre-wrap text-ink-body">
-      {onWordClick
-        ? parts.map((part, index) =>
-            part.kind === 'word' ? (
-              <button
-                key={index}
-                type="button"
-                onClick={() => onWordClick(part.text, part.sentence, index)}
-                className={`rounded-sm transition-colors ${
-                  index === selectedIndex ? 'bg-primary text-on-primary' : 'hover:bg-line'
-                }`}
-              >
-                {part.text}
-              </button>
-            ) : (
-              <span key={index}>{part.text}</span>
-            ),
-          )
-        : text}
-    </p>
+    <div className={`scroll-thin max-h-40 shrink-0 overflow-y-auto ${CARD.soft}`}>
+      <p className="text-[14.5px] leading-[1.75] font-medium break-words whitespace-pre-wrap text-ink">
+        {onWordClick
+          ? parts.map((part, index) =>
+              part.kind === 'word' ? (
+                <button
+                  key={index}
+                  type="button"
+                  onClick={() => onWordClick(part.text, part.sentence, index)}
+                  title={index === selectedIndex ? '再点一次回到译文' : undefined}
+                  className={`border-b-2 border-dotted pb-px ${
+                    index === selectedIndex
+                      ? 'rounded-[4px] border-mint bg-mint-soft px-1 py-px'
+                      : 'border-underline hover:border-ink-soft'
+                  }`}
+                >
+                  {part.text}
+                </button>
+              ) : (
+                <span key={index}>{part.text}</span>
+              ),
+            )
+          : text}
+      </p>
+    </div>
   );
 }

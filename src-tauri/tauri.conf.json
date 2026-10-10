@@ -14,16 +14,20 @@
       {
         "label": "main",
         "title": "AI-dict",
-        "width": 800,
+        "width": 940,
         "height": 600,
+        "minWidth": 760,
+        "minHeight": 480,
         "visible": false
       },
       {
         "label": "popup",
         "title": "AI-dict",
-        "width": 420,
-        "height": 560,
+        "width": 468,
+        "height": 608,
         "decorations": false,
+        "transparent": true,
+        "shadow": false,
         "resizable": false,
         "visible": false
       }

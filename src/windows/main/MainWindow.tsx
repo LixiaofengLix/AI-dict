@@ -1,5 +1,8 @@
 import { useEffect, useState } from 'react';
 import { listen } from '@tauri-apps/api/event';
+import { Keys } from '../../components/Keys';
+import { Mascot } from '../../components/Mascot';
+import { buttonClass, CAPTION } from '../../components/styles';
 import AiConfigPage from '../../features/settings/AiConfigPage';
 import { VocabularyPage } from '../../features/vocabulary/VocabularyPage';
 import { aiImpl } from '../../services/ai/impl';
@@ -50,43 +53,72 @@ export default function MainWindow() {
   }, []);
 
   return (
-    <main className="min-h-screen bg-page text-ink">
+    <main className="flex h-screen flex-col bg-surface text-ink">
+      {/* 顶栏（样张 .main-win .bar）：窗口用系统标题栏，这里只放右边的切页胶囊 */}
+      <header className="flex h-[41px] shrink-0 items-center justify-end border-b border-line bg-soft px-3">
+        <nav role="tablist" aria-label="主窗口" className="flex gap-1.5">
+          {PAGES.map(({ value, label }) => {
+            const selected = value === page;
+            return (
+              <button
+                key={value}
+                type="button"
+                role="tab"
+                aria-selected={selected}
+                onClick={() => setPage(value)}
+                className={`rounded-full px-3 py-1 text-footnote font-bold ${
+                  selected ? 'bg-ink text-surface' : 'text-ink-body hover:text-ink'
+                }`}
+              >
+                {label}
+              </button>
+            );
+          })}
+        </nav>
+      </header>
+
       {failedShortcuts.length > 0 && (
-        <div className="mx-5 mt-4 rounded-field border border-danger/40 bg-danger/5 p-3 text-footnote text-danger">
-          <p>这几个快捷键被别的程序占用了，没能注册：</p>
-          <ul className="mt-1 list-inside list-disc">
-            {failedShortcuts.map(({ action, accelerator }) => (
-              <li key={action}>
-                {POPUP_ACTION_LABELS[action]}：{accelerator}
-              </li>
-            ))}
-          </ul>
-        </div>
+        <ShortcutBanner failed={failedShortcuts} onOpenSettings={() => setPage('settings')} />
       )}
 
-      <nav role="tablist" aria-label="主窗口" className="flex gap-1 border-b border-line px-5 pt-3">
-        {PAGES.map(({ value, label }) => {
-          const selected = value === page;
-          return (
-            <button
-              key={value}
-              type="button"
-              role="tab"
-              aria-selected={selected}
-              onClick={() => setPage(value)}
-              className={`-mb-px border-b-2 px-3 pb-2 text-callout ${
-                selected
-                  ? 'border-primary font-medium text-ink'
-                  : 'border-transparent text-ink-soft hover:text-ink'
-              }`}
-            >
-              {label}
-            </button>
-          );
-        })}
-      </nav>
-
-      {page === 'vocabulary' ? <VocabularyPage /> : <AiConfigPage />}
+      <div className="min-h-0 flex-1">
+        {page === 'vocabulary' ? <VocabularyPage /> : <AiConfigPage />}
+      </div>
     </main>
+  );
+}
+
+/** 快捷键冲突提示条（样张 13）：黑描边、淡橙底，按键显示成键帽 */
+function ShortcutBanner({
+  failed,
+  onOpenSettings,
+}: {
+  failed: FailedShortcut[];
+  onOpenSettings: () => void;
+}) {
+  return (
+    <div className="mx-5 mt-3 flex shrink-0 items-center gap-2.5 rounded-[18px] border-[2.5px] border-ink bg-banner px-3.5 py-2.5 shadow-solid">
+      <Mascot kind="orange" />
+      <div className="min-w-0">
+        <p className="text-[13px] font-semibold text-ink">
+          这几个快捷键被别的程序占用了，没能注册：
+        </p>
+        {failed.map(({ action, accelerator }) => (
+          <p key={action} className={`mt-1 flex flex-wrap items-center gap-1.5 ${CAPTION}`}>
+            <Keys accelerator={accelerator} />
+            <span className="ml-0.5 text-ink-body">
+              {POPUP_ACTION_LABELS[action]} —— 去「设置」换一个
+            </span>
+          </p>
+        ))}
+      </div>
+      <button
+        type="button"
+        onClick={onOpenSettings}
+        className={`ml-auto shrink-0 ${buttonClass('dark', 'sm')}`}
+      >
+        去设置
+      </button>
+    </div>
   );
 }

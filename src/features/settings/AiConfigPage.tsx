@@ -1,4 +1,13 @@
 import { useEffect, useState } from 'react';
+import { Segment } from '../../components/Segment';
+import {
+  buttonClass,
+  CAPTION,
+  FIELD_LABEL,
+  PANEL,
+  PANEL_TITLE,
+  tagClass,
+} from '../../components/styles';
 import { aiImpl } from '../../services/ai/impl';
 import { getAiConfig, setAiConfig } from '../../services/settings';
 import type { AiConfig, ThinkingMode } from '../../types/ai';
@@ -14,15 +23,14 @@ const THINKING_OPTIONS: readonly { value: ThinkingMode; label: string }[] = [
 ];
 
 const THINKING_HINT =
-  'DeepSeek 的思考强度，None 为关闭思考。开启后模型先思考再回答，结果更严谨但慢很多；' +
-  '查词、翻译建议选 None。';
+  'DeepSeek 的思考强度，None 为关闭思考。开启后更严谨但慢很多；查词、翻译建议选 None。';
 
 /** 测试连接、保存的结果提示 */
 type Status = { ok: boolean; text: string };
 
 /**
- * 设置页：AI 配置（3.4，交互照 ReadingBook 的 AiConfigScreen）、快捷键、口音和开机启动（7.1）。
- * 三块各自读写各自的设置，互不影响。
+ * 设置页（样张 12）：AI 配置（3.4，交互照 ReadingBook 的 AiConfigScreen）、快捷键、口音和开机启动（7.1）。
+ * 两列网格：左边是 AI 配置的重点卡，占两行；右边上下是快捷键和偏好。三块各自读写各自的设置，互不影响。
  */
 export default function AiConfigPage() {
   const [initial, setInitial] = useState<AiConfig | null>(null);
@@ -40,15 +48,19 @@ export default function AiConfigPage() {
   }, []);
 
   return (
-    <div className="mx-auto flex max-w-xl flex-col gap-8 px-5 py-6">
-      {/* 读到已保存的配置后再挂载表单，输入框的初始值才正确 */}
-      {initial ? (
-        <AiConfigForm initial={initial} />
-      ) : (
-        <p className="text-callout text-ink-soft">正在读取配置…</p>
-      )}
-      <ShortcutsSection />
-      <PreferencesSection />
+    <div className="scroll-thin h-full overflow-y-auto">
+      <div className="grid grid-cols-2 items-start gap-x-[22px] gap-y-5 px-6 pt-5 pb-[26px]">
+        {/* 读到已保存的配置后再挂载表单，输入框的初始值才正确 */}
+        {initial ? (
+          <AiConfigForm initial={initial} />
+        ) : (
+          <section className={`row-span-2 ${PANEL.feature}`}>
+            <p className={CAPTION}>正在读取配置…</p>
+          </section>
+        )}
+        <ShortcutsSection />
+        <PreferencesSection />
+      </div>
     </div>
   );
 }
@@ -57,12 +69,15 @@ function AiConfigForm({ initial }: { initial: AiConfig }) {
   const [form, setForm] = useState(initial);
   const [busy, setBusy] = useState<'testing' | 'saving' | null>(null);
   const [status, setStatus] = useState<Status | null>(null);
+  // 最近一次测试连接成功了：标题旁边亮「已连接」，改了任何一项就熄掉
+  const [connected, setConnected] = useState(false);
   const complete = Boolean(form.apiKey.trim() && form.baseUrl.trim() && form.model.trim());
 
   const update = (patch: Partial<AiConfig>) => {
     setForm((f) => ({ ...f, ...patch }));
     // 改了配置，之前的测试结果和"已保存"都不再适用
     setStatus(null);
+    setConnected(false);
   };
 
   const trimmed = (): AiConfig => ({
@@ -77,6 +92,7 @@ function AiConfigForm({ initial }: { initial: AiConfig }) {
     setStatus(null);
     try {
       const result = await aiImpl.testConnection(config);
+      setConnected(result.ok);
       setStatus(
         result.ok
           ? { ok: true, text: '连接成功' }
@@ -109,10 +125,13 @@ function AiConfigForm({ initial }: { initial: AiConfig }) {
   const idle = busy === null;
 
   return (
-    <div>
-      <h1 className="text-title font-semibold text-ink">AI 服务配置</h1>
+    <section className={`row-span-2 ${PANEL.feature}`}>
+      <h2 className={PANEL_TITLE}>
+        AI 服务配置
+        {connected ? <span className={tagClass('mint')}>已连接</span> : null}
+      </h2>
 
-      <div className="mt-4 flex flex-col gap-4 rounded-card bg-surface p-4 shadow-card">
+      <div className="flex flex-col gap-2.5">
         <FormField
           label="API Key"
           secret
@@ -133,58 +152,27 @@ function AiConfigForm({ initial }: { initial: AiConfig }) {
           placeholder="deepseek-chat"
         />
       </div>
-      <p className="mt-2 px-1 text-caption leading-relaxed text-ink-soft">
+      <p className={`mx-1 mt-2.5 ${CAPTION}`}>
         支持兼容 OpenAI 接口格式的服务。API Key 只存在本机的数据库里，不会发到别处。
       </p>
 
-      <div className="mt-5 rounded-card bg-surface p-4 shadow-card">
-        <p className="text-footnote text-ink-body">思考模式</p>
-        <div
-          role="radiogroup"
-          aria-label="思考模式"
-          className="mt-2 grid grid-cols-4 gap-1 rounded-field bg-segment p-1"
-        >
-          {THINKING_OPTIONS.map(({ value, label }) => {
-            const selected = form.thinking === value;
-            return (
-              <button
-                key={value}
-                type="button"
-                role="radio"
-                aria-checked={selected}
-                onClick={() => update({ thinking: value })}
-                className={`rounded-[7px] py-1.5 text-callout ${
-                  selected
-                    ? 'bg-surface font-medium text-ink shadow-segment'
-                    : 'text-ink-body hover:text-ink'
-                }`}
-              >
-                {label}
-              </button>
-            );
-          })}
-        </div>
+      <div className="mt-5">
+        <p className={FIELD_LABEL}>思考模式</p>
+        <Segment
+          options={THINKING_OPTIONS}
+          value={form.thinking}
+          onChange={(thinking) => update({ thinking })}
+          label="思考模式"
+        />
       </div>
-      <p className="mt-2 px-1 text-caption leading-relaxed text-ink-soft">{THINKING_HINT}</p>
+      <p className={`mx-1 mt-2 ${CAPTION}`}>{THINKING_HINT}</p>
 
-      {status && (
-        <p
-          role="status"
-          className={`mt-5 flex items-center gap-2 text-callout ${
-            status.ok ? 'text-success' : 'text-danger'
-          }`}
-        >
-          <span aria-hidden>{status.ok ? '✓' : '✗'}</span>
-          {status.text}
-        </p>
-      )}
-
-      <div className="mt-5 flex gap-3">
+      <div className="mt-[22px] flex items-center gap-2.5">
         <button
           type="button"
           disabled={!complete || !idle}
           onClick={() => void test(trimmed())}
-          className="flex-1 rounded-field border border-line bg-surface py-2.5 text-callout font-medium text-ink-body hover:text-ink disabled:opacity-40"
+          className={buttonClass('ghost')}
         >
           {busy === 'testing' ? '测试中…' : '测试连接'}
         </button>
@@ -192,11 +180,22 @@ function AiConfigForm({ initial }: { initial: AiConfig }) {
           type="button"
           disabled={!complete || !idle}
           onClick={() => void save()}
-          className="flex-1 rounded-field bg-primary py-2.5 text-callout font-medium text-on-primary disabled:opacity-40"
+          className={buttonClass('accent')}
         >
           {busy === 'saving' ? '保存中…' : '保存'}
         </button>
+        {status && (
+          <span
+            role="status"
+            className={`ml-auto min-w-0 text-right text-footnote font-bold ${
+              status.ok ? 'text-success' : 'text-danger'
+            }`}
+          >
+            {status.ok ? '✓ ' : '✗ '}
+            {status.text}
+          </span>
+        )}
       </div>
-    </div>
+    </section>
   );
 }

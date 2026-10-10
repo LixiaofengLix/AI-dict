@@ -1,5 +1,7 @@
 import { useEffect, useState } from 'react';
+import { SectionLabel } from '../../components/SectionLabel';
 import { Skeleton } from '../../components/Skeleton';
+import { CAPTION, CARD, wordTitleClass } from '../../components/styles';
 import {
   getWordDetail,
   type VocabularyContext,
@@ -11,13 +13,8 @@ import { useAiWordResult } from '../lookup/hooks/useAiWordResult';
 import { splitWords } from '../sentence/splitWords';
 import { formatRelative } from './relativeTime';
 
-type Props = {
-  id: string;
-  onBack: () => void;
-};
-
-/** 生词详情（6.2）：词条 + AI 词典（收藏时查过，直接命中缓存）+ 全部语境 */
-export function WordDetail({ id, onBack }: Props) {
+/** 生词详情（6.2，样张 11 右栏）：词条 + AI 词典（收藏时查过，直接命中缓存）+ 全部语境 */
+export function WordDetail({ id }: { id: string }) {
   // undefined = 还在读；null = 已经不存在了（删掉了）
   const [word, setWord] = useState<VocabularyDetail | null | undefined>(undefined);
 
@@ -36,51 +33,27 @@ export function WordDetail({ id, onBack }: Props) {
     };
   }, [id]);
 
+  if (word === null) {
+    return <p className={`mt-10 text-center ${CAPTION}`}>这个生词已经不在了。</p>;
+  }
+  if (!word) return null;
+
+  const contexts = word.contexts.filter((context) => context.sentence);
   return (
-    <div className="mx-auto max-w-xl px-5 py-6">
-      <BackButton onBack={onBack} />
+    <>
+      <div className="flex items-center gap-2">
+        <h2 className={wordTitleClass(true)}>
+          {word.word}
+          <PhoneticPill word={word.word} phonetic={word.phonetic} />
+        </h2>
+      </div>
 
-      {word === null ? (
-        <p className="mt-10 text-center text-callout text-ink-soft">这个生词已经不在了。</p>
-      ) : word ? (
-        <>
-          <div className="mt-4 flex flex-wrap items-center gap-3">
-            <h1 className="text-title font-semibold text-ink">{word.word}</h1>
-            <PhoneticPill word={word.word} phonetic={word.phonetic} />
-          </div>
+      <SectionLabel title="AI 词典" className="mt-5" />
+      <DictSection word={word} />
 
-          <p className="mt-6 mb-3 text-caption font-medium tracking-wide text-ink-faint">释义</p>
-          <DictSection word={word} />
-
-          <p className="mt-6 mb-3 text-caption font-medium tracking-wide text-ink-faint">语境</p>
-          <ContextList contexts={word.contexts} />
-        </>
-      ) : null}
-    </div>
-  );
-}
-
-function BackButton({ onBack }: { onBack: () => void }) {
-  return (
-    <button
-      type="button"
-      onClick={onBack}
-      className="flex items-center gap-0.5 text-callout text-ink-soft hover:text-ink"
-    >
-      <svg
-        aria-hidden
-        viewBox="0 0 24 24"
-        fill="none"
-        stroke="currentColor"
-        strokeWidth="2"
-        strokeLinecap="round"
-        strokeLinejoin="round"
-        className="h-4 w-4"
-      >
-        <path d="M15 18l-6-6 6-6" />
-      </svg>
-      返回生词本
-    </button>
+      <SectionLabel title={`全部语境 · ${contexts.length}`} className="mt-5" />
+      <ContextList contexts={contexts} />
+    </>
   );
 }
 
@@ -93,19 +66,21 @@ function DictSection({ word }: { word: VocabularyDetail }) {
   const result = useAiWordResult('aiDictionary', word.word, '', generation);
 
   if (result.status === 'done') {
-    return <AiDictSenses senses={result.data.senses} />;
+    return (
+      <div className={CARD.plain}>
+        <AiDictSenses senses={result.data.senses} examples={false} />
+      </div>
+    );
   }
   if (result.status === 'error') {
     return (
-      <div className="flex flex-col gap-1.5">
-        <p className="text-body text-ink-body">{word.briefMeaning}</p>
-        <p className="text-caption text-ink-soft">
-          词典加载失败，上面是收藏时记下的释义（{result.message}）。
-        </p>
+      <div className={`flex flex-col gap-1.5 ${CARD.plain}`}>
+        <p className="text-body font-semibold text-ink">{word.briefMeaning}</p>
+        <p className={CAPTION}>词典加载失败，上面是收藏时记下的释义（{result.message}）。</p>
         <button
           type="button"
           onClick={() => setGeneration((count) => count + 1)}
-          className="self-start text-footnote text-ink-soft underline underline-offset-2 hover:text-ink"
+          className="self-start text-footnote font-bold text-primary hover:underline"
         >
           重新请求词典
         </button>
@@ -113,7 +88,7 @@ function DictSection({ word }: { word: VocabularyDetail }) {
     );
   }
   return (
-    <div className="flex flex-col gap-3">
+    <div className={`flex flex-col gap-2 ${CARD.plain}`}>
       <Skeleton width="40%" />
       <Skeleton />
       <Skeleton width="80%" />
@@ -123,40 +98,40 @@ function DictSection({ word }: { word: VocabularyDetail }) {
 
 /** 全部语境，新的在前；单词模式下收藏的语境没有句子，不显示空卡片 */
 function ContextList({ contexts }: { contexts: VocabularyContext[] }) {
-  const withSentence = contexts.filter((context) => context.sentence);
-  if (withSentence.length === 0) {
-    return <p className="text-callout text-ink-soft">这个词是从单词模式收藏的，没有语境。</p>;
+  if (contexts.length === 0) {
+    return <p className={`ml-0.5 ${CAPTION}`}>这个词是从单词模式收藏的，没有语境。</p>;
   }
   return (
-    <div className="flex flex-col gap-2">
-      {withSentence.map((context) => (
+    <div className="flex flex-col gap-2.5">
+      {contexts.map((context) => (
         <ContextCard key={context.id} context={context} />
       ))}
     </div>
   );
 }
 
+/** 一条语境（样张 11）：原句里查的词青绿淡底，下面青绿竖线引出语境释义，最后是时间 */
 function ContextCard({ context }: { context: VocabularyContext }) {
   const target = context.query.toLowerCase();
   return (
-    <div className="rounded-card border border-line bg-surface px-3 py-2.5">
-      <p className="text-footnote leading-relaxed break-words text-ink-body">
+    <div className={CARD.plain}>
+      <p className="text-footnote leading-[1.7] break-words text-ink-body">
         {splitWords(context.sentence).map((part, index) =>
           part.kind === 'word' && part.text.toLowerCase() === target ? (
-            <span key={index} className="text-ink underline decoration-primary underline-offset-2">
+            <em key={index} className="rounded-[4px] bg-mint-soft px-[3px] text-ink not-italic">
               {part.text}
-            </span>
+            </em>
           ) : (
             <span key={index}>{part.text}</span>
           ),
         )}
       </p>
       {context.contextMeaning ? (
-        <p className="mt-2 text-callout leading-relaxed break-words text-ink-body">
+        <p className="mt-2 border-l-[3px] border-mint py-0.5 pl-2.5 text-footnote leading-[1.65] break-words text-ink-body">
           {context.contextMeaning}
         </p>
       ) : null}
-      <p className="mt-1.5 text-caption text-ink-faint">{formatRelative(context.createdAt)}</p>
+      <p className={`mt-1.5 ${CAPTION}`}>{formatRelative(context.createdAt)}</p>
     </div>
   );
 }

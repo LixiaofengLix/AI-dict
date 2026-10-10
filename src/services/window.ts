@@ -61,19 +61,30 @@ function workAreaOf(monitor: Monitor): Rect {
 }
 
 /**
+ * 弹窗窗口比卡片大一圈的透明留白（逻辑像素），给 PopupWindow 里那条 CSS 投影用。
+ * 要和 tauri.conf.json 的 popup 尺寸（468×608 对 420×560）和 PopupWindow 的 p-6 一起改。
+ */
+const POPUP_PADDING = 24;
+
+/**
  * 摆弹窗：划词摆到光标右下角（用户刚在那儿划的词），输入翻译摆在工作区正中间。
  * 两种都先按光标位置反查是哪块显示器，副屏上也不会摆回主屏。
+ * 窗口外面那圈留白是透明的，所以按卡片尺寸算位置、再把窗口往回挪一圈——
+ * 用户看到的卡片就落在算出来的位置上。
  */
 async function placePopup(popup: WebviewWindow, action: PopupAction): Promise<void> {
   const cursor = await cursorPosition();
   const monitor = (await monitorFromPoint(cursor.x, cursor.y)) ?? (await primaryMonitor());
   if (!monitor) return;
 
+  // outerSize、setPosition 都是物理像素，留白按显示器缩放换算过来
   const size = await popup.outerSize();
+  const padding = Math.round(POPUP_PADDING * (await popup.scaleFactor()));
+  const card = { width: size.width - padding * 2, height: size.height - padding * 2 };
   const area = workAreaOf(monitor);
   const position =
-    action === 'input' ? centerInWorkArea(size, area) : placeNearCursor(cursor, size, area);
-  await popup.setPosition(new PhysicalPosition(position.x, position.y));
+    action === 'input' ? centerInWorkArea(card, area) : placeNearCursor(cursor, card, area);
+  await popup.setPosition(new PhysicalPosition(position.x - padding, position.y - padding));
 }
 
 /**

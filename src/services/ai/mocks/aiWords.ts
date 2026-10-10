@@ -20,7 +20,6 @@ export const mockAiDictEntries: Record<string, AiDictEntry> = {
   extraordinary: {
     word: 'extraordinary',
     phonetic: 'ɪkˈstrɔːdnri',
-    tags: ['四级', '六级', '考研', '雅思'],
     senses: [
       {
         pos: 'adj.',
@@ -48,7 +47,6 @@ export const mockAiDictEntries: Record<string, AiDictEntry> = {
   magazine: {
     word: 'magazine',
     phonetic: 'ˌmæɡəˈziːn',
-    tags: ['中考', '高考', '四级'],
     senses: [
       {
         pos: 'n.',
@@ -77,7 +75,6 @@ export const mockAiDictEntries: Record<string, AiDictEntry> = {
   seedy: {
     word: 'seedy',
     phonetic: 'ˈsiːdi',
-    tags: ['GRE'],
     senses: [
       {
         pos: 'adj.',
@@ -105,7 +102,6 @@ export const mockAiDictEntries: Record<string, AiDictEntry> = {
   go: {
     word: 'go',
     phonetic: 'ɡəʊ',
-    tags: ['中考', '高考', '四级'],
     senses: [
       {
         pos: 'v.',
@@ -154,7 +150,6 @@ export const mockAiDictEntries: Record<string, AiDictEntry> = {
   fortune: {
     word: 'fortune',
     phonetic: 'ˈfɔːtʃuːn',
-    tags: ['高考', '四级', '六级'],
     senses: [
       {
         pos: 'n.',

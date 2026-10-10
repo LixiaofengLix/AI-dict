@@ -52,10 +52,10 @@ describe('aiDictionaryMessages', () => {
 describe('parseAiDictionary', () => {
   it('went 返回原形 go', () => {
     const entry = parseAiDictionary(
-      JSON.stringify({ word: 'go', phonetic: '/ɡoʊ/', tags: ['四级'], senses: [SENSE] }),
+      JSON.stringify({ word: 'go', phonetic: '/ɡoʊ/', senses: [SENSE] }),
       'went',
     );
-    expect(entry).toEqual({ word: 'go', phonetic: 'ɡoʊ', tags: ['四级'], senses: [SENSE] });
+    expect(entry).toEqual({ word: 'go', phonetic: 'ɡoʊ', senses: [SENSE] });
   });
 
   it('缺字段用空值补上，原形缺失时用查询词', () => {
@@ -63,17 +63,13 @@ describe('parseAiDictionary', () => {
     expect(entry).toEqual({
       word: 'go',
       phonetic: null,
-      tags: [],
       senses: [{ pos: '', meaning: '去', definition: '', example: '', exampleTranslation: '' }],
     });
   });
 
-  it('只保留认识的考试标签，去重', () => {
-    const entry = parseAiDictionary(
-      JSON.stringify({ word: 'go', tags: ['四级', 'CET-4', '四级', 'GRE', 3], senses: [SENSE] }),
-      'go',
-    );
-    expect(entry.tags).toEqual(['四级', 'GRE']);
+  it('不再要考试标签：界面不显示，prompt 里也不提', () => {
+    const messages = aiDictionaryMessages('go', '', 'us');
+    expect(messages[messages.length - 1].content).not.toContain('tags');
   });
 
   it('丢掉没有中文释义的条目，全部无效时报 format', () => {
@@ -192,11 +188,17 @@ describe('contextMeaningMessages', () => {
     return messages[messages.length - 1].content;
   };
 
-  it('带上原句和单词，要求以"这个词在这里指"开头', () => {
+  it('带上原句和单词，要求以"这个词在这里"开头', () => {
     const user = messagesFor('off', 'The alarm went off just as I was about to leave.');
 
     expect(user).toContain('The alarm went off just as I was about to leave.');
-    expect(user).toContain('off 在这里指');
+    expect(user).toContain('以"off 在这里"开头');
+  });
+
+  it('整句译文界面上另有显示，不让它复述整句', () => {
+    const user = messagesFor('off', 'The alarm went off just as I was about to leave.');
+
+    expect(user).toContain('不要翻译或复述整句');
   });
 
   it('是短语的一部分时要写出完整短语并解释整体意思', () => {
@@ -226,13 +228,14 @@ describe('translateMessages', () => {
     expect(bare).toBe('【选中的内容】\nI was a hospital in myself.');
   });
 
-  it('英译中：要中文翻译和句意解释两节，标题就是界面按它解析的那两个', () => {
+  it('英译中：只要中文翻译一节，标题就是界面按它解析的那个', () => {
     const messages = translateMessages(input, 'toChinese');
     expect(messages[0].content).toContain('英译中');
     const translate = messages[messages.length - 1].content;
+    expect(TRANSLATION_HEADINGS.toChinese).toEqual(['中文翻译']);
     expect(translate).toContain(`## ${TRANSLATION_HEADINGS.toChinese[0]}`);
-    expect(translate).toContain(`## ${TRANSLATION_HEADINGS.toChinese[1]}`);
-    expect(translate).not.toContain('## 语法要点');
+    expect(translate).not.toContain('## 句意解释');
+    expect(translate).toContain('只输出这一节');
   });
 
   it('中译英：换一套说法，要英文翻译，不是逐字直译', () => {
@@ -243,6 +246,7 @@ describe('translateMessages', () => {
     expect(translate).toContain(`## ${TRANSLATION_HEADINGS.toEnglish[0]}`);
     expect(translate).toContain(`## ${TRANSLATION_HEADINGS.toEnglish[1]}`);
     expect(translate).toContain('地道的英文');
+    expect(translate).toContain('以 "- " 开头');
     expect(translate).not.toContain('## 中文翻译');
   });
 });

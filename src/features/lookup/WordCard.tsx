@@ -1,4 +1,6 @@
-import { useState } from 'react';
+import { useState, type ReactNode } from 'react';
+import { Segment } from '../../components/Segment';
+import { SCROLL_AREA } from '../../components/styles';
 import type { AiDictEntry } from '../../types/ai';
 import { AiDictTab } from './components/AiDictTab';
 import { CollocationsTab } from './components/CollocationsTab';
@@ -21,14 +23,20 @@ type Props = {
   /** AI 词典的结果和重新生成：请求在词卡顶层（词头和收藏星标也要用，6.1），这里只管展示 */
   dict: AiResult<AiDictEntry>;
   onRefreshDict: () => void;
+  /** 词头那一行（返回译文 / 原形 / 音标 / 星标），放在分段控件下面 */
+  header: ReactNode;
+  /** 语境释义卡片，放在分段控件上面；单词模式没有 */
+  context?: ReactNode;
 };
 
 /**
  * 词卡的三个 Tab（DEV_PLAN 5.3）：AI 词典 / 单词簇 / 常见搭配。
+ * 顺序照样张：句子模式是「语境释义 → 分段控件 → 词头 → Tab 内容」整块一起滚（02），
+ * 单词模式是分段控件和词头固定、只有 Tab 内容滚（04）。
  * 单词簇、常见搭配切过去才第一次请求，之后保持挂载，切回来不重新请求；
  * 重新生成按 Tab 各自计数，只让那个 Tab 跳过缓存。
  */
-export function WordCard({ word, sentence = '', dict, onRefreshDict }: Props) {
+export function WordCard({ word, sentence = '', dict, onRefreshDict, header, context }: Props) {
   const [tab, setTab] = useState<LookupTab>('dict');
   const [opened, setOpened] = useState<readonly LookupTab[]>(['dict']);
   // 词典的重新生成在词卡顶层（generation 在 WordPanel 里），这里只记另外两个
@@ -41,57 +49,46 @@ export function WordCard({ word, sentence = '', dict, onRefreshDict }: Props) {
   const regenerate = (which: keyof typeof generations) => () =>
     setGenerations((counts) => ({ ...counts, [which]: counts[which] + 1 }));
 
-  return (
-    <div className="flex min-h-0 flex-1 flex-col gap-3">
-      <div
-        role="tablist"
-        aria-label="词卡"
-        className="grid grid-cols-3 gap-1 rounded-field bg-segment p-1"
-      >
-        {TABS.map(({ value, label }) => {
-          const selected = value === tab;
-          return (
-            <button
-              key={value}
-              type="button"
-              role="tab"
-              aria-selected={selected}
-              onClick={() => changeTab(value)}
-              className={`rounded-[7px] py-1.5 text-callout ${
-                selected
-                  ? 'bg-surface font-medium text-ink shadow-segment'
-                  : 'text-ink-body hover:text-ink'
-              }`}
-            >
-              {label}
-            </button>
-          );
-        })}
-      </div>
+  const segment = (
+    <Segment options={TABS} value={tab} onChange={changeTab} label="词卡" role="tab" />
+  );
+  const panes = opened.map((key) => (
+    <div key={key} hidden={key !== tab} className="flex flex-1 flex-col">
+      {key === 'dict' ? (
+        <AiDictTab query={word} result={dict} onRefresh={onRefreshDict} />
+      ) : key === 'cluster' ? (
+        <WordClusterTab
+          word={word}
+          sentence={sentence}
+          generation={generations.cluster}
+          onRefresh={regenerate('cluster')}
+        />
+      ) : (
+        <CollocationsTab
+          word={word}
+          sentence={sentence}
+          generation={generations.collocations}
+          onRefresh={regenerate('collocations')}
+        />
+      )}
+    </div>
+  ));
 
-      <div className="min-h-0 flex-1 overflow-y-auto">
-        {opened.map((key) => (
-          <div key={key} hidden={key !== tab}>
-            {key === 'dict' ? (
-              <AiDictTab result={dict} onRefresh={onRefreshDict} />
-            ) : key === 'cluster' ? (
-              <WordClusterTab
-                word={word}
-                sentence={sentence}
-                generation={generations.cluster}
-                onRefresh={regenerate('cluster')}
-              />
-            ) : (
-              <CollocationsTab
-                word={word}
-                sentence={sentence}
-                generation={generations.collocations}
-                onRefresh={regenerate('collocations')}
-              />
-            )}
-          </div>
-        ))}
+  if (context) {
+    return (
+      <div className={SCROLL_AREA}>
+        {context}
+        {segment}
+        {header}
+        {panes}
       </div>
+    );
+  }
+  return (
+    <div className="flex min-h-0 flex-1 flex-col gap-2.5">
+      {segment}
+      {header}
+      <div className={SCROLL_AREA}>{panes}</div>
     </div>
   );
 }

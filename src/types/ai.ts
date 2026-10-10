@@ -26,8 +26,6 @@ export interface AiDictEntry {
   /** 单词原形：点 went 时为 go */
   word: string;
   phonetic: string | null;
-  /** 考试范围等标签：四级、雅思… */
-  tags: string[];
   senses: AiDictSense[];
 }
 

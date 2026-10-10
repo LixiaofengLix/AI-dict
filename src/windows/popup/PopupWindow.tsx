@@ -1,12 +1,13 @@
 import { useEffect, useRef, useState } from 'react';
 import { listen } from '@tauri-apps/api/event';
 import { getCurrentWindow } from '@tauri-apps/api/window';
+import { Mascot } from '../../components/Mascot';
+import { buttonClass, CAPTION, CARD, tagClass } from '../../components/styles';
 import { WordPanel } from '../../features/lookup/WordPanel';
 import { AiNotConfigured } from '../../features/lookup/components/AiNotConfigured';
 import { useAiConfigured } from '../../features/lookup/hooks/useAiConfigured';
 import { SentenceView } from '../../features/sentence/SentenceView';
 import {
-  POPUP_ACTION_LABELS,
   POPUP_TRIGGER_EVENT,
   showMainWindow,
   type PopupTriggerPayload,
@@ -129,7 +130,7 @@ export default function PopupWindow() {
           onChange={setDraft}
           onSubmit={submit}
         />
-        {submitted && renderResult(submitted)}
+        {submitted ? renderResult(submitted) : <InputHint />}
       </>
     );
   }
@@ -150,40 +151,40 @@ export default function PopupWindow() {
   }
 
   return (
-    <div className="flex min-h-screen flex-col bg-page text-ink">
-      <header
-        data-tauri-drag-region
-        className="flex items-center justify-between border-b border-line px-2 py-1.5"
-      >
-        <button
-          type="button"
-          onClick={() => void togglePinned()}
-          className={`rounded px-2 py-1 text-caption ${
-            pinned ? 'bg-primary text-on-primary' : 'text-ink-soft hover:bg-line'
-          }`}
+    // 窗口比卡片大一圈（tauri.conf.json 里 468×608 对 420×560），这一圈是透明的留白，
+    // 给下面这条 CSS 投影用——系统阴影会在窗口边上压出一条黑线，所以关掉了（见 DEV_PLAN 取舍）
+    <div className="h-screen p-6">
+      <div className="flex h-full flex-col overflow-hidden rounded-card border border-line bg-surface text-ink shadow-pop">
+        <header
+          data-tauri-drag-region
+          className="flex shrink-0 items-center justify-end border-b border-line px-3 py-2 text-caption font-semibold text-ink-soft"
         >
-          固定
-        </button>
-        <button
-          type="button"
-          onClick={() => void getCurrentWindow().hide()}
-          className="rounded px-2 py-1 text-caption text-ink-soft hover:bg-line"
-        >
-          关闭
-        </button>
-      </header>
+          <span className="flex gap-3.5">
+            <button
+              type="button"
+              onClick={() => void togglePinned()}
+              aria-pressed={pinned}
+              className={`font-semibold ${pinned ? 'text-primary' : 'text-ink-soft hover:text-ink'}`}
+            >
+              {pinned ? '已固定' : '固定'}
+            </button>
+            <button
+              type="button"
+              onClick={() => void getCurrentWindow().hide()}
+              className="font-semibold text-ink-soft hover:text-ink"
+            >
+              关闭
+            </button>
+          </span>
+        </header>
 
-      <main className="flex min-h-0 flex-1 flex-col gap-2 p-3">
-        <h1 className="text-body font-semibold">
-          {trigger ? POPUP_ACTION_LABELS[trigger.action] : 'AI-dict 弹窗'}
-        </h1>
-        {renderBody()}
-      </main>
+        <main className="flex min-h-0 flex-1 flex-col gap-2.5 p-3">{renderBody()}</main>
+      </div>
     </div>
   );
 }
 
-/** 输入翻译（5.4）：顶部输入框，回车提交、Shift+回车换行 */
+/** 输入翻译（5.4，样张 07 / 08）：5 行高的气泡输入框，回车提交、Shift+回车换行 */
 function InputView({
   note,
   value,
@@ -196,41 +197,63 @@ function InputView({
   onSubmit: () => void;
 }) {
   return (
-    <div className="flex flex-col gap-2">
-      {note && <p className="text-caption text-ink-soft">{note}</p>}
-      <div className="flex items-start gap-2">
-        <textarea
-          autoFocus
-          rows={2}
-          value={value}
-          onChange={(event) => onChange(event.target.value)}
-          onKeyDown={(event) => {
-            if (event.key !== 'Enter' || event.shiftKey) return;
-            // 输入法里回车是选词，不能当成提交。WebKit（WKWebView）有个坑：确认候选词那一下
-            // compositionend 先于 keydown 到，等 keydown 时 isComposing 已经是 false 了，
-            // 只有 keyCode 229（VK_PROCESSKEY，被输入法处理过的键）还认得出它。
-            // 所以两个都要看，靠记 compositionstart/end 的状态没用（WebKit bug 165004）
-            if (event.nativeEvent.isComposing || event.nativeEvent.keyCode === 229) return;
-            event.preventDefault();
-            onSubmit();
-          }}
-          placeholder="输入或粘贴单词、句子"
-          className="min-w-0 flex-1 resize-none rounded-field border border-line bg-surface px-2.5 py-1.5 text-callout text-ink outline-none placeholder:text-ink-faint focus:border-ink-faint"
-        />
-        <button
-          type="button"
-          onClick={onSubmit}
-          className="rounded-field bg-primary px-3 py-1.5 text-callout text-on-primary"
-        >
-          翻译
-        </button>
+    <>
+      {/* 输入框是气泡形：左下角那个小圆角是"话从这儿说出来"的角（样张里的 .field.bubble） */}
+      <textarea
+        autoFocus
+        rows={5}
+        value={value}
+        onChange={(event) => onChange(event.target.value)}
+        onKeyDown={(event) => {
+          if (event.key !== 'Enter' || event.shiftKey) return;
+          // 输入法里回车是选词，不能当成提交。WebKit（WKWebView）有个坑：确认候选词那一下
+          // compositionend 先于 keydown 到，等 keydown 时 isComposing 已经是 false 了，
+          // 只有 keyCode 229（VK_PROCESSKEY，被输入法处理过的键）还认得出它。
+          // 所以两个都要看，靠记 compositionstart/end 的状态没用（WebKit bug 165004）
+          if (event.nativeEvent.isComposing || event.nativeEvent.keyCode === 229) return;
+          event.preventDefault();
+          onSubmit();
+        }}
+        placeholder="输入或粘贴单词、句子"
+        className="w-full shrink-0 resize-none rounded-[16px_16px_16px_4px] border border-line bg-soft px-3 py-[9px] text-[13px] text-ink outline-none placeholder:text-ink-soft focus:border-ink"
+      />
+      {note && (
+        <p className="flex shrink-0 items-center gap-1.5 text-caption font-semibold text-ink-body">
+          <span aria-hidden className="h-[7px] w-[7px] shrink-0 rounded-full bg-primary" />
+          {note}
+        </p>
+      )}
+    </>
+  );
+}
+
+/** 输入翻译的空状态（样张 07）：两只小角色 + 键盘提示，占满下面的空白 */
+function InputHint() {
+  return (
+    <div className="flex min-h-0 flex-1 flex-col items-center justify-center gap-2.5">
+      <div className="flex items-end gap-3">
+        <Mascot kind="mint" />
+        <Mascot kind="orange" />
+      </div>
+      <div className="flex flex-wrap justify-center gap-2">
+        {['回车提交', 'Shift + 回车换行', 'Esc 关闭'].map((hint) => (
+          <span key={hint} className={tagClass()}>
+            {hint}
+          </span>
+        ))}
       </div>
     </div>
   );
 }
 
+const PERMISSION_STEPS = [
+  '点下面的按钮，系统会先弹一次提示',
+  '在「隐私与安全性 → 辅助功能」打开 AI-dict',
+  '回来再按一次快捷键，不用重启',
+];
+
 /**
- * 没有辅助功能权限时的引导（macOS）。系统设置一打开，弹窗就失去焦点关掉了，
+ * 没有辅助功能权限时的引导（macOS，样张 09）。系统设置一打开，弹窗就失去焦点关掉了，
  * 所以这里不用管"授权之后怎么办"——用户回来再按一次快捷键即可，取词那条路会重新判断权限。
  */
 function PermissionView() {
@@ -249,21 +272,37 @@ function PermissionView() {
   }
 
   return (
-    <div className="flex min-h-0 flex-1 flex-col gap-2">
-      <p className="text-callout">{'取词要用 macOS 的「辅助功能」权限，现在还没开。'}</p>
-      <p className="text-caption text-ink-soft">
-        {
-          '在「系统设置 → 隐私与安全性 → 辅助功能」里打开 AI-dict 的开关（开发期从终端启动时，这个权限算在终端头上），回来再按一次快捷键就行，不用重启。'
-        }
-      </p>
+    <div className="flex min-h-0 flex-1 flex-col justify-center gap-2.5">
+      <Mascot kind="black" className="self-center" />
+      <div className={CARD.feature}>
+        <span className={tagClass('orange')}>macOS · 辅助功能</span>
+        <p className="mt-2.5 text-[16px] leading-[1.35] font-extrabold tracking-[-0.02em] text-ink">
+          取词要用「辅助功能」权限，现在还没开。
+        </p>
+        <ol className="mt-2.5">
+          {PERMISSION_STEPS.map((step, index) => (
+            <li
+              key={step}
+              className="flex items-center gap-2.5 border-b border-line py-[7px] text-[12.5px] font-semibold text-ink last:border-b-0"
+            >
+              <b className="text-caption text-ink-soft tabular-nums">
+                {String(index + 1).padStart(2, '0')}
+              </b>
+              {step}
+              <i aria-hidden className="ml-auto h-[7px] w-[7px] shrink-0 bg-ink" />
+            </li>
+          ))}
+        </ol>
+        <p className={`mt-1.5 ${CAPTION}`}>开发期从终端启动时，这个权限算在终端头上。</p>
+      </div>
       <button
         type="button"
         onClick={() => void openSettings()}
-        className="self-start rounded-field bg-primary px-3 py-1.5 text-callout text-on-primary"
+        className={`self-center ${buttonClass('accent')}`}
       >
         打开系统设置
       </button>
-      {error && <p className="text-caption text-danger">{error}</p>}
+      {error && <p className="text-center text-caption text-danger">{error}</p>}
     </div>
   );
 }

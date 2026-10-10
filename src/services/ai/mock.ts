@@ -36,7 +36,6 @@ function fallbackAiDictEntry(word: string): AiDictEntry {
   return {
     word,
     phonetic: null,
-    tags: [],
     senses: [
       {
         pos: '',

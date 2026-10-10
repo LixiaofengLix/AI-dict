@@ -10,8 +10,7 @@ import prettier from 'eslint-config-prettier';
 
 export default defineConfig([
   {
-    // design/ 是本地 UI 设计台（不入库），有它自己的 eslint.config.js，主项目不扫它
-    ignores: ['dist/', 'src-tauri/', 'ReadingBook/', 'pot-desktop-master/', 'design/'],
+    ignores: ['dist/', 'src-tauri/', 'ReadingBook/', 'pot-desktop-master/'],
   },
   {
     files: ['**/*.{ts,tsx}'],

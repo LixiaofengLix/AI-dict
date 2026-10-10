@@ -13,8 +13,8 @@ type Props = {
   word: string;
   /** 点它时所在的那一句，当语境传给 AI；单词模式（4.2）下为空字符串 */
   sentence: string;
-  /** 句子模式的"返回译文"；单词模式没有这一行 */
-  onBack?: () => void;
+  /** 句子模式下整段的译文，跟在语境释义卡片下面 */
+  translation?: string;
 };
 
 /**
@@ -23,7 +23,7 @@ type Props = {
  * 点词就并行请求语境释义和 AI 词典（第 3 节的取舍）：词典结果词头和星标都要用。
  * 句子模式换词时由 SentenceView 换 key 整块重新挂载：上一个词还在跑的请求跟着取消。
  */
-export function WordPanel({ word, sentence, onBack }: Props) {
+export function WordPanel({ word, sentence, translation }: Props) {
   // 两个"重新生成"各记各的：重试失败的结果都不会进缓存，直接加 1 就行
   const [contextGeneration, setContextGeneration] = useState(0);
   const [dictGeneration, setDictGeneration] = useState(0);
@@ -45,48 +45,28 @@ export function WordPanel({ word, sentence, onBack }: Props) {
       : null;
 
   return (
-    <div className="flex min-h-0 flex-1 flex-col gap-3">
-      <div className="flex shrink-0 items-center gap-3">
-        {onBack ? (
-          <button
-            type="button"
-            onClick={onBack}
-            className="flex shrink-0 items-center gap-0.5 text-callout text-ink-soft hover:text-ink"
-          >
-            <svg
-              aria-hidden
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke="currentColor"
-              strokeWidth="2"
-              strokeLinecap="round"
-              strokeLinejoin="round"
-              className="h-4 w-4"
-            >
-              <path d="M15 18l-6-6 6-6" />
-            </svg>
-            返回译文
-          </button>
-        ) : null}
-        <WordHeader query={word} result={dict} />
-        <StarButton details={starDetails} sentence={sentence} />
-      </div>
-
-      {/* 单词模式没有语境可解释，也不请求 */}
-      {sentence ? (
-        <ContextCard
-          meaning={context.text}
-          error={context.error}
-          onRetry={() => setContextGeneration((count) => count + 1)}
-        />
-      ) : null}
-
-      <WordCard
-        word={word}
-        sentence={sentence}
-        dict={dict}
-        onRefreshDict={() => setDictGeneration((count) => count + 1)}
-      />
-    </div>
+    <WordCard
+      word={word}
+      sentence={sentence}
+      dict={dict}
+      onRefreshDict={() => setDictGeneration((count) => count + 1)}
+      header={
+        <div className="flex shrink-0 items-center gap-2">
+          <WordHeader query={word} result={dict} compact={Boolean(sentence)} />
+          <StarButton details={starDetails} sentence={sentence} />
+        </div>
+      }
+      // 单词模式没有语境可解释，也不请求
+      context={
+        sentence ? (
+          <ContextCard
+            meaning={context.text}
+            error={context.error}
+            onRetry={() => setContextGeneration((count) => count + 1)}
+            translation={translation}
+          />
+        ) : undefined
+      }
+    />
   );
 }

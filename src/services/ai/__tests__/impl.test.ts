@@ -116,7 +116,7 @@ describe('aiImpl.contextMeaning', () => {
     expect(config).toEqual(CONFIG);
     const user = messages[messages.length - 1].content;
     expect(user).toContain('We were all feeling seedy.');
-    expect(user).toContain('seedy 在这里指');
+    expect(user).toContain('以"seedy 在这里"开头');
   });
 });
 
@@ -212,7 +212,7 @@ describe('翻译缓存', () => {
 
 describe('AI 结果缓存', () => {
   const dictJson = (word: string, meaning: string) =>
-    JSON.stringify({ word, phonetic: 'ɡoʊ', tags: [], senses: [{ pos: 'v.', meaning }] });
+    JSON.stringify({ word, phonetic: 'ɡoʊ', senses: [{ pos: 'v.', meaning }] });
   const clusterJson = JSON.stringify({
     forms: [
       { label: '原形', word: 'go' },

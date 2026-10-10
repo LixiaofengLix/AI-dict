@@ -6,8 +6,6 @@ import { AiError } from '../errors';
 import { extractJsonObject, list, str } from './json';
 import { DIRECT, JSON_ONLY, SHORT_EXAMPLE } from './style';
 
-export const EXAM_TAGS = ['中考', '高考', '四级', '六级', '考研', '雅思', '托福', 'GRE'] as const;
-
 const MAX_SENSES = 6;
 
 const SYSTEM = ['你是面向中文读者的英汉双解词典。', JSON_ONLY, DIRECT].join('\n');
@@ -15,7 +13,6 @@ const SYSTEM = ['你是面向中文读者的英汉双解词典。', JSON_ONLY, D
 const EXAMPLE = {
   word: 'go',
   phonetic: 'ɡoʊ',
-  tags: ['中考', '高考', '四级'],
   senses: [
     {
       pos: 'v.',
@@ -47,7 +44,6 @@ export function aiDictionaryMessages(
         '要求：',
         '- word：原形（went 写 go，magazines 写 magazine；专有名词保留大小写）',
         `- phonetic：原形的${accentName}国际音标，不带斜杠或方括号`,
-        `- tags：所属考试词汇，只能从 ${EXAM_TAGS.join('、')} 中选，没有给空数组`,
         `- senses：常用义项按常用程度排列，最多 ${MAX_SENSES} 条，罕见义项不列；pos 用 n. v. adj. 等缩写；`,
         '  meaning 是简短的中文释义（近义用"；"分隔），definition 是对应的简短英文释义；',
         `  ${SHORT_EXAMPLE}，exampleTranslation 是它的中文翻译`,
@@ -81,15 +77,9 @@ export function parseAiDictionary(text: string, query: string): AiDictEntry {
   if (senses.length === 0) {
     throw new AiError('format', '词典条目没有释义');
   }
-  const tags = Array.isArray(json.tags)
-    ? [...new Set(json.tags.map(str))].filter((tag): tag is (typeof EXAM_TAGS)[number] =>
-        (EXAM_TAGS as readonly string[]).includes(tag),
-      )
-    : [];
   return {
     word: str(json.word) || query,
     phonetic: cleanPhonetic(json.phonetic),
-    tags,
     senses,
   };
 }

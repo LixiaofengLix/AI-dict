@@ -2,50 +2,91 @@
 @import 'tailwindcss';
 
 /*
- * 主题：颜色、字号参照 ReadingBook 的 src/theme/（colors.ts、typography.ts）。
- * 深色模式直接跟随系统，见下面的媒体查询（同一批变量换一套深色值）。
+ * 弹窗是透明的圆角窗口（tauri.conf.json 里 popup 开了 transparent），页面本身不能铺底色，
+ * 否则四个圆角会露出方角：底色由各自窗口的根元素自己给（主窗口铺白）。
  */
-@theme {
-  --color-page: #f7f0e6; /* 页面主背景：暖米白 */
-  --color-surface: #fffefa; /* 卡片 */
-  --color-sheet: #ffffff; /* 输入框等浮在卡片上的表面 */
-  --color-line: #e7e0d2; /* 描边、分隔线 */
-  --color-segment: #ebeae6; /* 分段控件底轨 */
-  --color-primary: #a8462f; /* 砖红：主按钮 */
-  --color-on-primary: #ffffff;
-  --color-success: #4e8a5b;
-  --color-danger: #d64533;
-  --color-ink: #241e18; /* 主文字（ReadingBook 的 textPrimary） */
-  --color-ink-body: #544e48;
-  --color-ink-soft: #857e73;
-  --color-ink-faint: #ada69c;
-
-  --text-title: 20px;
-  --text-body: 15px;
-  --text-callout: 14px;
-  --text-footnote: 13px;
-  --text-caption: 12px;
-
-  --radius-field: 10px;
-  --radius-card: 14px;
-  --shadow-card: 0 2px 10px rgb(80 60 30 / 0.06);
-  --shadow-segment: 0 1px 3px rgb(0 0 0 / 0.12);
+html,
+body {
+  background: transparent;
+  font-family:
+    -apple-system, BlinkMacSystemFont, 'PingFang SC', 'Helvetica Neue', 'Microsoft YaHei',
+    sans-serif;
+  -webkit-font-smoothing: antialiased;
 }
 
-/* 深色模式：ReadingBook 没有深色版界面配色，这组是照它的暖色调推的 */
-@media (prefers-color-scheme: dark) {
-  :root {
-    --color-page: #1c1a17;
-    --color-surface: #262320;
-    --color-sheet: #2e2a26;
-    --color-line: #3d3833;
-    --color-segment: #302c28;
-    --color-primary: #c0563a;
-    --color-success: #7fb98c;
-    --color-danger: #e4756a;
-    --color-ink: #ece7df;
-    --color-ink-body: #c6bfb5;
-    --color-ink-soft: #a29a8e;
-    --color-ink-faint: #7c756a;
+/*
+ * 主题：照 docs/mockup/ui-preview.html 一比一取值（字号取样张末尾「紧凑字阶」那一档）。
+ * 三条规则：黑/白/浅灰占九成，橙色只给「选中」、星标和主按钮；重点卡靠黑描边压住；
+ * 标题 800 字重 + 收紧字距，正文回落到 400/500。
+ * 只有浅色一套：样张就是这个风格，深色模式拿掉的理由见 DEV_PLAN 取舍。
+ */
+@theme {
+  --color-page: #f0efec; /* 样张画布的底色 */
+  --color-surface: #ffffff; /* 窗口和卡片 */
+  --color-soft: #fbfaf8; /* 比卡片再浅一档：输入框、原句卡、详情栏这些「凹槽」 */
+  --color-line: #e9e7e3; /* 描边、分隔线 */
+  --color-line-quiet: #f0eeea; /* 次要卡片（句意解释）的描边 */
+  --color-segment: #e7e6e2; /* 分段控件底轨、实心胶囊的底色、例句左边的竖线 */
+  --color-shimmer: #f4f3f0; /* 骨架屏扫过去的那道亮光 */
+  --color-underline: #d7d4ce; /* 原句里可点的词下面的虚线 */
+  --color-primary: #ff6a2b; /* 橙：主按钮、选中、星标 */
+  --color-on-primary: #ffffff;
+  --color-primary-soft: #ffe7db; /* 橙色标签的底 */
+  --color-primary-ink: #b23c05; /* 橙色标签的字 */
+  --color-banner: #fff3ee; /* 主窗口顶部提示条的底 */
+  --color-mint: #2fd3a8; /* 青绿：区块标题前的小方块、语境竖线 */
+  --color-mint-soft: #d8fbef; /* 青绿淡底：原句里当前查的那个词、「已连接」标签 */
+  --color-purple: #7b6cf6; /* 只给装饰的小角色 */
+  --color-success: #0d7a5f; /* 当文字用的绿 */
+  --color-danger: #ff4d4d;
+  --color-danger-soft: #ffecec;
+  --color-ink: #111111; /* 主文字；重点卡的描边也是它 */
+  --color-ink-body: #6c6a66;
+  --color-ink-soft: #a3a09a;
+  --color-ink-faint: #b9b5ae;
+  --color-ink-mute: #cfcbc4; /* 次要区块标题前的小方块 */
+
+  --text-title: 22px; /* 页面标题、词头 */
+  --text-body: 13px; /* 卡片正文 */
+  --text-callout: 12.5px; /* 次要正文：句意解释、分段控件 */
+  --text-footnote: 12px; /* 英文释义、例句、小按钮 */
+  --text-caption: 11px; /* 区块标题、说明文字、标签 */
+
+  --radius-field: 14px;
+  --radius-inner: 14px; /* 卡片：弹窗里的小块 */
+  --radius-feature: 16px; /* 重点卡：黑底译文卡、黑描边卡 */
+  --radius-card: 22px; /* 窗口和设置页的大块 */
+  --shadow-card: 0 8px 24px rgb(20 18 15 / 0.06);
+  --shadow-solid: 0 6px 0 rgb(17 17 17 / 0.08); /* 重点卡下面那条实心的影子 */
+  /* 弹窗自己的投影：系统的窗口阴影会在边上压出一条黑线（见 DEV_PLAN 取舍），
+     所以关掉它、由这条 CSS 阴影代替；模糊和位移都收在窗口留白（24px）里，免得被窗口边裁掉 */
+  --shadow-pop: 0 10px 24px rgb(20 18 15 / 0.16);
+
+  --animate-shimmer: shimmer 1.4s infinite;
+  --animate-blink: blink 1s steps(2) infinite;
+
+  @keyframes shimmer {
+    from {
+      background-position: 200% 0;
+    }
+    to {
+      background-position: -200% 0;
+    }
+  }
+  @keyframes blink {
+    50% {
+      opacity: 0;
+    }
+  }
+}
+
+/* 细滚动条（样张里的 .scroll）：5px 宽、浅灰滑块 */
+@utility scroll-thin {
+  &::-webkit-scrollbar {
+    width: 5px;
+  }
+  &::-webkit-scrollbar-thumb {
+    background: var(--color-segment);
+    border-radius: 3px;
   }
 }

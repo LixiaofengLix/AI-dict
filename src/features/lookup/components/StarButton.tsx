@@ -8,8 +8,9 @@ type Props = {
 };
 
 /**
- * 词头的收藏星标（6.1）。按「词 + 句子」显示：空心 = 这句话里的语境还没收，
- * 点击收藏；实心 = 收过了，点击删掉这条语境（词再无别的语境时连词删）。
+ * 词头的收藏星标（6.1，样式见样张 .star）。按「词 + 句子」显示：
+ * 白底黑框空心星 = 这句话里的语境还没收，点击收藏；橙底白星 = 收过了，点击删掉这条语境
+ * （词再无别的语境时连词删）；灰框 = 词典还没好，不能点。
  */
 export function StarButton({ details, sentence }: Props) {
   const { starred, pending, toggle } = useStarred(details, sentence);
@@ -34,18 +35,24 @@ export function StarButton({ details, sentence }: Props) {
               ? '收藏进生词本（连同这句话）'
               : '收藏进生词本'
       }
-      className={`shrink-0 rounded p-1 text-primary ${disabled ? 'opacity-40' : 'hover:bg-line'}`}
+      className={`ml-auto grid h-[30px] w-[30px] shrink-0 place-items-center rounded-full border-2 ${
+        starred === null
+          ? 'cursor-default border-line bg-surface text-ink-soft'
+          : starred
+            ? 'border-ink bg-primary text-on-primary'
+            : 'border-ink bg-surface text-ink'
+      } ${pending ? 'cursor-default' : ''}`}
     >
       <svg
         aria-hidden
         viewBox="0 0 24 24"
         fill={starred ? 'currentColor' : 'none'}
-        stroke="currentColor"
-        strokeWidth="1.5"
+        stroke={starred ? 'none' : 'currentColor'}
+        strokeWidth="2.2"
         strokeLinejoin="round"
-        className="h-5 w-5"
+        className="h-3.5 w-3.5"
       >
-        <path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01z" />
+        <path d="M12 2.6l2.9 5.9 6.5.9-4.7 4.6 1.1 6.4-5.8-3-5.8 3 1.1-6.4L2.6 9.4l6.5-.9z" />
       </svg>
     </button>
   );

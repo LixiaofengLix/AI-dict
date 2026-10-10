@@ -1,6 +1,8 @@
 import { useEffect, useState } from 'react';
 import { disable, enable, isEnabled } from '@tauri-apps/plugin-autostart';
 import { getAccent, setAccent } from '../../services/settings';
+import { Segment } from '../../components/Segment';
+import { CAPTION, PANEL, PANEL_TITLE } from '../../components/styles';
 import type { Accent } from '../../types/settings';
 
 const ACCENTS: readonly { value: Accent; label: string }[] = [
@@ -8,12 +10,16 @@ const ACCENTS: readonly { value: Accent; label: string }[] = [
   { value: 'uk', label: '英音' },
 ];
 
-/** 设置页的偏好区（7.1）：发音口音、开机启动。都是改完立即保存、立即生效 */
+/** 一行偏好（样张 .pref）：左边标题 + 说明，右边控件；行与行之间一条细线 */
+const PREF_ROW =
+  'flex items-center justify-between gap-4 border-b border-line py-2.5 first:pt-0 last:border-b-0 last:pb-0';
+
+/** 设置页的偏好区（7.1，样张 12 右下）：发音口音、开机启动。都是改完立即保存、立即生效 */
 export function PreferencesSection() {
   return (
-    <section>
-      <h2 className="text-title font-semibold text-ink">偏好</h2>
-      <div className="mt-4 flex flex-col gap-5 rounded-card bg-surface p-4 shadow-card">
+    <section className={PANEL.plain}>
+      <h2 className={PANEL_TITLE}>偏好</h2>
+      <div>
         <AccentRow />
         <AutostartRow />
       </div>
@@ -47,36 +53,18 @@ function AccentRow() {
   };
 
   return (
-    <div className="flex items-center justify-between gap-4">
+    <div className={PREF_ROW}>
       <div>
-        <p className="text-footnote text-ink-body">发音口音</p>
-        <p className="mt-0.5 text-caption text-ink-soft">单词朗读和查词音标都按它来</p>
+        <p className="text-[13px] font-bold text-ink">发音口音</p>
+        <p className={CAPTION}>单词朗读和查词音标都按它来</p>
       </div>
-      <div
-        role="radiogroup"
-        aria-label="发音口音"
-        className="grid w-40 shrink-0 grid-cols-2 gap-1 rounded-field bg-segment p-1"
-      >
-        {ACCENTS.map(({ value, label }) => {
-          const selected = value === accent;
-          return (
-            <button
-              key={value}
-              type="button"
-              role="radio"
-              aria-checked={selected}
-              onClick={() => change(value)}
-              className={`rounded-[7px] py-1.5 text-callout ${
-                selected
-                  ? 'bg-surface font-medium text-ink shadow-segment'
-                  : 'text-ink-body hover:text-ink'
-              }`}
-            >
-              {label}
-            </button>
-          );
-        })}
-      </div>
+      <Segment
+        options={ACCENTS}
+        value={accent}
+        onChange={change}
+        label="发音口音"
+        className="w-[150px]"
+      />
     </div>
   );
 }
@@ -111,19 +99,22 @@ function AutostartRow() {
   }
 
   return (
-    <label className="flex items-center justify-between gap-4">
+    <label className={PREF_ROW}>
       <span>
-        <span className="block text-footnote text-ink-body">开机时自动启动</span>
-        <span className="mt-0.5 block text-caption text-ink-soft">
-          开机后自动驻留托盘，等快捷键呼出
-        </span>
+        <span className="block text-[13px] font-bold text-ink">开机时自动启动</span>
+        <span className={`block ${CAPTION}`}>开机后驻留托盘，等快捷键呼出</span>
       </span>
       <input
         type="checkbox"
         checked={enabled ?? false}
         disabled={enabled === null}
         onChange={() => void toggle()}
-        className="h-4 w-4 shrink-0 accent-primary"
+        className="peer sr-only"
+      />
+      {/* 开关（样张 .switch）：黑描边，开了是橙底白钮；语义还是 checkbox */}
+      <span
+        aria-hidden
+        className="relative h-6 w-10 shrink-0 cursor-pointer rounded-full border-2 border-ink bg-segment transition-colors after:absolute after:top-[2px] after:left-[2px] after:h-4 after:w-4 after:rounded-full after:bg-ink after:transition-all peer-checked:bg-primary peer-checked:after:left-[18px] peer-checked:after:bg-surface peer-disabled:opacity-40"
       />
     </label>
   );

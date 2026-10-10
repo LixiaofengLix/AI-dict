@@ -14,12 +14,19 @@ export const PASSAGE_TTL_MS = 30 * 60 * 1000;
 
 const normalize = (word: string) => word.trim().toLowerCase();
 
+/**
+ * prompt 的输出格式改了就把对应的版本加一，旧格式的缓存自然读不到。
+ * v2（2026-10-10）：英译中不再有句意解释；语境释义不再复述整句。
+ */
+const CONTEXT_MEANING_VERSION = 'v2';
+const PASSAGE_VERSION = 'v2';
+
 export function contextMeaningKey(sentence: string, word: string) {
-  return ['contextMeaning', sentence.trim(), normalize(word)].join('\n');
+  return ['contextMeaning', CONTEXT_MEANING_VERSION, sentence.trim(), normalize(word)].join('\n');
 }
 
 export function passageKey(kind: PassageKind, text: string) {
-  return [kind, text.trim()].join('\n');
+  return [kind, PASSAGE_VERSION, text.trim()].join('\n');
 }
 
 /** variant 区分同一个词的不同版本，例如 AI 词典的音标跟口音走 */

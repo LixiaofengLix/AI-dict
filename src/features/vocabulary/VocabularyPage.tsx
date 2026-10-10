@@ -1,11 +1,13 @@
 import { useCallback, useEffect, useState } from 'react';
 import { getCurrentWindow } from '@tauri-apps/api/window';
+import { Mascot } from '../../components/Mascot';
+import { buttonClass, CAPTION, CENTER_TITLE, PILL_FIELD } from '../../components/styles';
 import { listWords, removeWord, type VocabularyListItem } from '../../services/vocabulary';
 import { formatRelative } from './relativeTime';
 import { WordDetail } from './WordDetail';
 
 /**
- * 生词本（6.2）：列表（按时间倒序、搜索、删除）+ 详情。
+ * 生词本（6.2，样张 11 / 13）：左栏列表（按时间倒序、搜索、删除），右栏选中那个词的详情。
  * 搜索在本地过滤：个人自用，量级用不着进 SQL。
  */
 export function VocabularyPage() {
@@ -43,13 +45,10 @@ export function VocabularyPage() {
     try {
       await removeWord(id);
       setWords((prev) => prev?.filter((word) => word.id !== id) ?? null);
+      if (selectedId === id) setSelectedId(null);
     } catch (error) {
       console.warn('删除生词失败', error);
     }
-  }
-
-  if (selectedId !== null) {
-    return <WordDetail id={selectedId} onBack={() => setSelectedId(null)} />;
   }
 
   const keyword = query.trim().toLowerCase();
@@ -58,80 +57,123 @@ export function VocabularyPage() {
   );
 
   return (
-    <div className="mx-auto max-w-xl px-5 py-6">
-      <div className="flex items-baseline justify-between gap-4">
-        <h1 className="text-title font-semibold text-ink">生词本</h1>
-        {words !== null && words.length > 0 ? (
-          <span className="text-footnote text-ink-soft">共 {words.length} 个</span>
-        ) : null}
+    <div className="grid h-full grid-cols-[minmax(0,1fr)_400px]">
+      <div className="scroll-thin min-h-0 overflow-y-auto border-r border-line px-5 py-[18px]">
+        <div className="flex items-baseline justify-between gap-4">
+          <h1 className="text-title font-extrabold tracking-[-0.03em] text-ink">生词本</h1>
+          {words !== null ? (
+            <span className="rounded-full bg-segment px-2.5 py-[3px] text-caption font-bold text-ink-body">
+              共 {words.length} 个
+            </span>
+          ) : null}
+        </div>
+
+        <input
+          type="search"
+          value={query}
+          onChange={(event) => setQuery(event.target.value)}
+          placeholder="搜索单词或释义"
+          className={`mt-3 mb-1 ${PILL_FIELD}`}
+        />
+
+        {shown === undefined ? (
+          <p className={`mt-6 ${CAPTION}`}>正在读生词本…</p>
+        ) : words?.length === 0 ? (
+          <EmptyState />
+        ) : shown.length === 0 ? (
+          <p className={`mt-10 text-center ${CAPTION}`}>没有匹配的生词</p>
+        ) : (
+          <ul>
+            {shown.map((word) => {
+              const selected = word.id === selectedId;
+              return (
+                <li
+                  key={word.id}
+                  className={`flex items-center gap-2.5 rounded-[12px] border-b px-2.5 py-[9px] hover:bg-soft ${
+                    selected ? 'border-transparent bg-soft outline-2 outline-ink' : 'border-line'
+                  }`}
+                >
+                  <button
+                    type="button"
+                    onClick={() => setSelectedId(word.id)}
+                    aria-current={selected}
+                    className="min-w-0 flex-1 text-left"
+                  >
+                    <span className="block">
+                      <b className="text-[14px] font-bold text-ink">{word.word}</b>
+                      {word.phonetic ? (
+                        <span className="ml-2 text-caption text-ink-soft">/{word.phonetic}/</span>
+                      ) : null}
+                    </span>
+                    <span className="mt-0.5 block truncate text-footnote text-ink-body">
+                      {word.briefMeaning}
+                    </span>
+                    <span className="mt-0.5 block text-caption text-ink-soft">
+                      {word.contextCount} 条语境 · {formatRelative(word.createdAt)}
+                    </span>
+                  </button>
+                  {confirming === word.id ? (
+                    <span className="flex shrink-0 items-center gap-1.5">
+                      <button
+                        type="button"
+                        onClick={() => void remove(word.id)}
+                        className={buttonClass('danger', 'sm')}
+                      >
+                        删除
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setConfirming(null)}
+                        className={buttonClass('quiet', 'sm')}
+                      >
+                        取消
+                      </button>
+                    </span>
+                  ) : (
+                    <button
+                      type="button"
+                      onClick={() => setConfirming(word.id)}
+                      className="shrink-0 rounded-full px-2 py-1 text-caption font-bold text-ink-soft hover:bg-danger-soft hover:text-danger"
+                    >
+                      删除
+                    </button>
+                  )}
+                </li>
+              );
+            })}
+          </ul>
+        )}
       </div>
 
-      <input
-        type="search"
-        value={query}
-        onChange={(event) => setQuery(event.target.value)}
-        placeholder="搜索单词或释义"
-        className="mt-4 w-full rounded-field border border-line bg-surface px-3 py-2 text-callout text-ink outline-none placeholder:text-ink-faint focus:border-ink-faint"
-      />
+      <div className="scroll-thin min-h-0 overflow-y-auto bg-soft px-5 py-[18px]">
+        {selectedId !== null ? (
+          <WordDetail key={selectedId} id={selectedId} />
+        ) : (
+          <div className="flex h-full items-center justify-center">
+            <p className={CAPTION}>选一个生词看详情</p>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
 
-      {shown === undefined ? (
-        <p className="mt-6 text-callout text-ink-soft">正在读生词本…</p>
-      ) : shown.length === 0 ? (
-        <p className="mt-10 text-center text-callout text-ink-soft">
-          {keyword ? '没有匹配的生词' : '还没有生词。在词卡上点星标，生词连同语境就会收到这里。'}
-        </p>
-      ) : (
-        <ul className="mt-2">
-          {shown.map((word) => (
-            <li key={word.id} className="flex items-center gap-3 border-b border-line py-3">
-              <button
-                type="button"
-                onClick={() => setSelectedId(word.id)}
-                className="min-w-0 flex-1 text-left"
-              >
-                <span className="flex items-baseline gap-2">
-                  <span className="text-body font-semibold text-ink">{word.word}</span>
-                  {word.phonetic ? (
-                    <span className="text-footnote text-ink-soft">/{word.phonetic}/</span>
-                  ) : null}
-                </span>
-                <span className="mt-0.5 block truncate text-callout text-ink-body">
-                  {word.briefMeaning}
-                </span>
-                <span className="mt-0.5 block text-caption text-ink-faint">
-                  {word.contextCount} 条语境 · {formatRelative(word.createdAt)}
-                </span>
-              </button>
-              {confirming === word.id ? (
-                <span className="flex shrink-0 items-center gap-1">
-                  <button
-                    type="button"
-                    onClick={() => void remove(word.id)}
-                    className="rounded-field bg-danger px-2.5 py-1 text-caption text-on-primary"
-                  >
-                    删除
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setConfirming(null)}
-                    className="px-1.5 py-1 text-caption text-ink-soft hover:text-ink"
-                  >
-                    取消
-                  </button>
-                </span>
-              ) : (
-                <button
-                  type="button"
-                  onClick={() => setConfirming(word.id)}
-                  className="shrink-0 px-1.5 py-1 text-caption text-ink-faint hover:text-danger"
-                >
-                  删除
-                </button>
-              )}
-            </li>
-          ))}
-        </ul>
-      )}
+/** 生词本空状态（样张 13） */
+function EmptyState() {
+  return (
+    <div className="flex flex-col items-center gap-2.5 pt-[50px] pb-5 text-center">
+      <div className="flex items-end gap-3">
+        <Mascot kind="black" />
+        <Mascot kind="mint" />
+      </div>
+      <h3 className={CENTER_TITLE}>还没有生词</h3>
+      <p className="max-w-[20rem] text-footnote leading-[1.55] text-ink-soft">
+        在词卡上点{' '}
+        <span className="inline-flex rounded-full bg-primary-soft px-2 py-0.5 text-caption font-bold text-primary-ink">
+          ★ 星标
+        </span>
+        ，生词连同所在的句子、语境释义就会收到这里。
+      </p>
     </div>
   );
 }
