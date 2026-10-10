@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { disable, enable, isEnabled } from '@tauri-apps/plugin-autostart';
 import { getAccent, setAccent } from '../../services/settings';
 import { Segment } from '../../components/Segment';
+import { Switch } from '../../components/Switch';
 import { CAPTION, PANEL, PANEL_TITLE } from '../../components/styles';
 import type { Accent } from '../../types/settings';
 
@@ -104,17 +105,11 @@ function AutostartRow() {
         <span className="block text-[13px] font-bold text-ink">开机时自动启动</span>
         <span className={`block ${CAPTION}`}>开机后驻留托盘，等快捷键呼出</span>
       </span>
-      <input
-        type="checkbox"
+      <Switch
+        label="开机时自动启动"
         checked={enabled ?? false}
         disabled={enabled === null}
         onChange={() => void toggle()}
-        className="peer sr-only"
-      />
-      {/* 开关（样张 .switch）：黑描边，开了是橙底白钮；语义还是 checkbox */}
-      <span
-        aria-hidden
-        className="relative h-6 w-10 shrink-0 cursor-pointer rounded-full border-2 border-ink bg-segment transition-colors after:absolute after:top-[2px] after:left-[2px] after:h-4 after:w-4 after:rounded-full after:bg-ink after:transition-all peer-checked:bg-primary peer-checked:after:left-[18px] peer-checked:after:bg-surface peer-disabled:opacity-40"
       />
     </label>
   );

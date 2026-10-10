@@ -1,5 +1,7 @@
 import { invoke } from '@tauri-apps/api/core';
 import { joinOcrLines } from '../utils/joinOcrLines';
+import { recognizeWithBaidu } from './baiduOcr';
+import { getOcrConfig } from './settings';
 
 /**
  * 弹系统框选截一块屏幕（macOS），返回截图的 PNG base64；用户按 Esc 取消框选时返回 null。
@@ -27,13 +29,24 @@ export async function captureScreenRegion(region: ScreenRegion): Promise<string>
 
 /**
  * 把图上的文字认出来，拼成一段返回；没认出字返回空字符串。图是上面两个 capture 给的 base64。
- * 现在只有系统 OCR 一条路（Rust 侧的 ocr_system），云 OCR 和大模型读图也接在这条路由上
- * （图拿在同一只手里，换一条识别路线不用重新框选）。
+ *
+ * 识别分两层（阶段 9），由设置页的开关定：勾了云 OCR（百度高精度，9.3）就先走云，
+ * 失败（没网、Key 错、额度用尽、图太大）自动降回系统 OCR——图已经拿在手里，不用重新框选。
+ * 系统 OCR 一直是兜底，不用配置。
  *
  * 没有屏幕录制权限时截到的其他窗口是空的，同样是空字符串，不会报错——
  * 要不要给授权引导由调用方判断，见 isScreenCaptureTrusted。
  */
 export async function recognizeText(image: string): Promise<string> {
+  const config = await getOcrConfig();
+  // 勾了但 Key 没填全时不算开了云 OCR：设置里改了开关还没保存也会落到这里
+  if (config.baidu && config.baiduApiKey.trim() && config.baiduSecretKey.trim()) {
+    try {
+      return joinOcrLines(await recognizeWithBaidu(image, config));
+    } catch (error) {
+      console.warn('云 OCR 失败，回退系统 OCR', error);
+    }
+  }
   return joinOcrLines(await invoke<string[]>('ocr_system', { image }));
 }
 

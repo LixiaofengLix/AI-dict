@@ -11,8 +11,12 @@ vi.mock('@tauri-apps/plugin-sql', () => ({
         const value = fake.rows.get(params[0] as string);
         return value === undefined ? [] : [{ value }];
       },
-      execute: async (_sql: string, params: unknown[]) => {
-        fake.rows.set(params[0] as string, params[1] as string);
+      execute: async (sql: string, params: unknown[]) => {
+        if (sql.startsWith('DELETE')) {
+          fake.rows.delete(params[0] as string);
+        } else {
+          fake.rows.set(params[0] as string, params[1] as string);
+        }
         return { rowsAffected: 1 };
       },
     }),
@@ -23,11 +27,16 @@ vi.mock('@tauri-apps/plugin-sql', () => ({
 vi.mock('../../utils/platform', () => ({ isMac: true }));
 
 import {
+  clearBaiduToken,
   getAccent,
   getAiConfig,
+  getBaiduToken,
+  getOcrConfig,
   getShortcuts,
   setAccent,
   setAiConfig,
+  setBaiduToken,
+  setOcrConfig,
   setShortcuts,
 } from '../settings';
 
@@ -111,6 +120,67 @@ describe('快捷键设置', () => {
       input: 'Alt+S',
       ocr: 'Alt+X',
     });
+  });
+});
+
+describe('截图识别设置', () => {
+  it('没设置过时云 OCR 是关的，Key 为空', async () => {
+    await expect(getOcrConfig()).resolves.toEqual({
+      baidu: false,
+      baiduApiKey: '',
+      baiduSecretKey: '',
+    });
+  });
+
+  it('存进去能原样读回来，值按 JSON 存在 ocr 这行', async () => {
+    const config = { baidu: true, baiduApiKey: 'ak-1', baiduSecretKey: 'sk-1' };
+    await setOcrConfig(config);
+
+    expect(JSON.parse(fake.rows.get('ocr') as string)).toEqual(config);
+    await expect(getOcrConfig()).resolves.toEqual(config);
+  });
+
+  it('存的内容缺字段或字段不合法时用默认值补齐，勾选项只认 true', async () => {
+    fake.rows.set('ocr', JSON.stringify({ baidu: 'yes', baiduApiKey: 42 }));
+    await expect(getOcrConfig()).resolves.toEqual({
+      baidu: false,
+      baiduApiKey: '',
+      baiduSecretKey: '',
+    });
+  });
+});
+
+describe('百度 access_token 缓存', () => {
+  const future = Date.now() + 24 * 60 * 60 * 1000;
+
+  it('没存过时没有', async () => {
+    await expect(getBaiduToken()).resolves.toBeNull();
+  });
+
+  it('没过期时原样读回来', async () => {
+    await setBaiduToken({ token: 'tok-1', expiresAt: future });
+    await expect(getBaiduToken()).resolves.toEqual({ token: 'tok-1', expiresAt: future });
+  });
+
+  it('过期的当作没有，并从表里删掉', async () => {
+    await setBaiduToken({ token: 'tok-old', expiresAt: Date.now() - 1000 });
+
+    await expect(getBaiduToken()).resolves.toBeNull();
+    expect(fake.rows.has('baiduToken')).toBe(false);
+  });
+
+  it('存坏了的当作没有', async () => {
+    fake.rows.set('baiduToken', JSON.stringify({ token: '', expiresAt: future }));
+    await expect(getBaiduToken()).resolves.toBeNull();
+
+    fake.rows.set('baiduToken', JSON.stringify({ token: 'tok-1' }));
+    await expect(getBaiduToken()).resolves.toBeNull();
+  });
+
+  it('clear 之后就没有了', async () => {
+    await setBaiduToken({ token: 'tok-1', expiresAt: future });
+    await clearBaiduToken();
+    await expect(getBaiduToken()).resolves.toBeNull();
   });
 });
 

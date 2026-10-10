@@ -1,5 +1,6 @@
 import type { ReactNode } from 'react';
 import AiConfigPage from './AiConfigPage';
+import { OcrSection } from './OcrSection';
 import { PreferencesSection } from './PreferencesSection';
 import { PromptsSection } from './PromptsSection';
 import { ShortcutsSection } from './ShortcutsSection';
@@ -60,8 +61,9 @@ export function SettingsPage({
           </div>
         </TabPanel>
         <TabPanel value="ai" tab={tab}>
-          <div className="max-w-[560px]">
+          <div className="flex max-w-[560px] flex-col gap-[22px]">
             <AiConfigPage />
+            <OcrSection />
           </div>
         </TabPanel>
         <TabPanel value="prompts" tab={tab}>

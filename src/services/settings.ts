@@ -1,5 +1,5 @@
 import type { AiConfig, ThinkingMode } from '../types/ai';
-import type { Accent, PromptKind, PromptOverrides } from '../types/settings';
+import type { Accent, BaiduToken, OcrConfig, PromptKind, PromptOverrides } from '../types/settings';
 import { isMac } from '../utils/platform';
 import { getDb } from './db';
 
@@ -14,6 +14,12 @@ const KEY_ACCENT = 'accent';
 
 /** 改过的提示词（只存可改的那部分），按 PromptKind 存 */
 const KEY_PROMPTS = 'prompts';
+
+/** 截图识别的设置（9.3：云 OCR 开关和百度的两个 Key） */
+const KEY_OCR = 'ocr';
+
+/** 缓存的百度 access_token，30 天有效 */
+const KEY_BAIDU_TOKEN = 'baiduToken';
 
 const PROMPT_KINDS: readonly PromptKind[] = [
   'contextMeaning',
@@ -83,6 +89,12 @@ async function write(key: string, value: unknown): Promise<void> {
     'INSERT INTO settings (key, value) VALUES ($1, $2) ON CONFLICT (key) DO UPDATE SET value = excluded.value',
     [key, JSON.stringify(value)],
   );
+}
+
+/** 删掉一条设置 */
+async function remove(key: string): Promise<void> {
+  const db = await getDb();
+  await db.execute('DELETE FROM settings WHERE key = $1', [key]);
 }
 
 /** AI 配置。没配置过时各字段为空字符串，thinking 为默认值 */
@@ -157,4 +169,66 @@ export async function getPromptOverrides(): Promise<PromptOverrides> {
 
 export async function setPromptOverrides(overrides: PromptOverrides): Promise<void> {
   await write(KEY_PROMPTS, toPromptOverrides(overrides));
+}
+
+/** 存储里缺失或写坏的字段逐个退回默认值；勾选项只在明确存了 true 时才算开 */
+function toOcrConfig(stored: unknown): OcrConfig {
+  const s = (typeof stored === 'object' && stored !== null ? stored : {}) as Record<
+    string,
+    unknown
+  >;
+  const text = (value: unknown) => (typeof value === 'string' ? value : '');
+  return {
+    baidu: s.baidu === true,
+    baiduApiKey: text(s.baiduApiKey),
+    baiduSecretKey: text(s.baiduSecretKey),
+  };
+}
+
+/** 截图识别设置。没设置过时云 OCR 是关的，系统 OCR 照常兜底 */
+export async function getOcrConfig(): Promise<OcrConfig> {
+  return toOcrConfig(await read(KEY_OCR));
+}
+
+export async function setOcrConfig(config: OcrConfig): Promise<void> {
+  await write(KEY_OCR, toOcrConfig(config));
+}
+
+function toBaiduToken(stored: unknown): BaiduToken | null {
+  const s = (typeof stored === 'object' && stored !== null ? stored : {}) as Record<
+    string,
+    unknown
+  >;
+  if (typeof s.token !== 'string' || !s.token) {
+    return null;
+  }
+  if (typeof s.expiresAt !== 'number' || !Number.isFinite(s.expiresAt)) {
+    return null;
+  }
+  return { token: s.token, expiresAt: s.expiresAt };
+}
+
+/**
+ * 缓存的百度 access_token。没存过、存坏了或已过期（30 天）都当作没有——
+ * 过期的那条顺手删掉，免得留在表里。换取和判断过期都在 services/baiduOcr 里。
+ */
+export async function getBaiduToken(): Promise<BaiduToken | null> {
+  const token = toBaiduToken(await read(KEY_BAIDU_TOKEN));
+  if (!token) {
+    return null;
+  }
+  if (Date.now() >= token.expiresAt) {
+    await remove(KEY_BAIDU_TOKEN);
+    return null;
+  }
+  return token;
+}
+
+export async function setBaiduToken(token: BaiduToken): Promise<void> {
+  await write(KEY_BAIDU_TOKEN, token);
+}
+
+/** 丢掉缓存的 token：服务端说它失效时用，下次重新换一个 */
+export async function clearBaiduToken(): Promise<void> {
+  await remove(KEY_BAIDU_TOKEN);
 }
