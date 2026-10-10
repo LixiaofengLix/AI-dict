@@ -17,7 +17,10 @@ export function Switch({
   onChange: (checked: boolean) => void;
 }) {
   return (
-    <>
+    // 外面这层 relative 是必须的：sr-only 的 input 是 position: absolute，没有定位祖先时
+    // 它的包含块是初始包含块，会逃出滚动容器的裁剪（overflow 拦不住），把文档撑高、
+    // 在 Windows 上多出一条文档滚动条（macOS 的滚动条是覆盖式的，看不出来）
+    <span className="relative shrink-0">
       <input
         type="checkbox"
         aria-label={label}
@@ -28,8 +31,8 @@ export function Switch({
       />
       <span
         aria-hidden
-        className="relative h-6 w-10 shrink-0 cursor-pointer rounded-full border-2 border-ink bg-segment transition-colors after:absolute after:top-[2px] after:left-[2px] after:h-4 after:w-4 after:rounded-full after:bg-ink after:transition-all peer-checked:bg-primary peer-checked:after:left-[18px] peer-checked:after:bg-surface peer-disabled:opacity-40"
+        className="relative block h-6 w-10 cursor-pointer rounded-full border-2 border-ink bg-segment transition-colors after:absolute after:top-[2px] after:left-[2px] after:h-4 after:w-4 after:rounded-full after:bg-ink after:transition-all peer-checked:bg-primary peer-checked:after:left-[18px] peer-checked:after:bg-surface peer-disabled:opacity-40"
       />
-    </>
+    </span>
   );
 }
