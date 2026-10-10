@@ -6,6 +6,14 @@ import { parseCollocations } from '../prompts/collocations';
 import { extractJsonObject } from '../prompts/json';
 import { passageBlock } from '../prompts/passage';
 import { TRANSLATION_HEADINGS, translateDirection, translateMessages } from '../prompts/translate';
+import {
+  DEFAULT_INSTRUCTIONS,
+  instructionOf,
+  lockedPreview,
+  PROMPT_MODES,
+  promptVariant,
+} from '../prompts/registry';
+import { fillInstruction } from '../prompts/style';
 import { parseWordCluster } from '../prompts/wordCluster';
 
 const SENSE = {
@@ -183,30 +191,31 @@ describe('parseCollocations', () => {
 });
 
 describe('contextMeaningMessages', () => {
-  const messagesFor = (word: string, sentence: string) => {
-    const messages = contextMeaningMessages(word, sentence);
-    return messages[messages.length - 1].content;
-  };
+  const sentence = 'The alarm went off just as I was about to leave.';
+  const [system, user] = contextMeaningMessages('off', sentence).map((m) => m.content);
 
   it('带上原句和单词，要求以"这个词在这里"开头', () => {
-    const user = messagesFor('off', 'The alarm went off just as I was about to leave.');
-
-    expect(user).toContain('The alarm went off just as I was about to leave.');
-    expect(user).toContain('以"off 在这里"开头');
+    expect(user).toContain(sentence);
+    expect(user).toContain('单词：off');
+    expect(system).toContain('以"off 在这里"开头');
   });
 
   it('整句译文界面上另有显示，不让它复述整句', () => {
-    const user = messagesFor('off', 'The alarm went off just as I was about to leave.');
-
-    expect(user).toContain('不要翻译或复述整句');
+    expect(system).toContain('不要翻译或复述整句');
   });
 
   it('是短语的一部分时要写出完整短语并解释整体意思', () => {
-    const user = messagesFor('off', 'The alarm went off just as I was about to leave.');
+    expect(system).toContain('短语动词');
+    expect(system).toContain('go off');
+    expect(system).toContain('写出完整短语');
+  });
 
-    expect(user).toContain('短语动词');
-    expect(user).toContain('go off');
-    expect(user).toContain('写出完整短语');
+  it('只可用加粗写在固定部分里，改提示词也改不掉', () => {
+    const [custom, fixed] = contextMeaningMessages('off', sentence, '随便说说').map(
+      (m) => m.content,
+    );
+    expect(custom).toBe('随便说说');
+    expect(fixed).toContain('**加粗**');
   });
 });
 
@@ -245,7 +254,7 @@ describe('translateMessages', () => {
     expect(translate).toContain('【选中的内容】\n我差点迟到。');
     expect(translate).toContain(`## ${TRANSLATION_HEADINGS.toEnglish[0]}`);
     expect(translate).toContain(`## ${TRANSLATION_HEADINGS.toEnglish[1]}`);
-    expect(translate).toContain('地道的英文');
+    expect(messages[0].content).toContain('地道的英文');
     expect(translate).toContain('以 "- " 开头');
     expect(translate).not.toContain('## 中文翻译');
   });
@@ -257,5 +266,35 @@ describe('translateDirection', () => {
     expect(translateDirection('他说这张 photo 很好看')).toBe('toEnglish');
     expect(translateDirection('I was a hospital in myself.')).toBe('toChinese');
     expect(translateDirection("It's not my cup of tea.")).toBe('toChinese');
+  });
+});
+
+describe('提示词设置', () => {
+  it('每种模式都有默认提示词和固定格式的预览', () => {
+    for (const { kind } of PROMPT_MODES) {
+      expect(DEFAULT_INSTRUCTIONS[kind].trim()).not.toBe('');
+      expect(lockedPreview(kind, 'us').trim()).not.toBe('');
+    }
+    expect(lockedPreview('aiDictionary', 'us')).toContain('只输出一个 JSON 对象');
+    expect(lockedPreview('translateToEnglish', 'us')).toContain('## 句意解释');
+  });
+
+  it('没改或改成空白时用默认，默认提示词不改缓存 key', () => {
+    expect(instructionOf({}, 'wordCluster')).toBe(DEFAULT_INSTRUCTIONS.wordCluster);
+    expect(instructionOf({ wordCluster: '  ' }, 'wordCluster')).toBe(
+      DEFAULT_INSTRUCTIONS.wordCluster,
+    );
+    expect(instructionOf({ wordCluster: ' 自定义 ' }, 'wordCluster')).toBe('自定义');
+    expect(promptVariant(DEFAULT_INSTRUCTIONS.wordCluster, 'wordCluster')).toBe('');
+    expect(promptVariant('自定义', 'wordCluster')).toMatch(/^p\w+$/);
+    expect(promptVariant('自定义', 'wordCluster')).not.toBe(
+      promptVariant('自定义2', 'wordCluster'),
+    );
+  });
+
+  it('占位符换成这次的值，不认识的花括号原样保留', () => {
+    expect(fillInstruction('讲 {word}：{sentence} {other}', { word: 'go', sentence: 'Go!' })).toBe(
+      '讲 go：Go! {other}',
+    );
   });
 });

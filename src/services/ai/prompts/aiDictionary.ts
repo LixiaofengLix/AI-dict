@@ -4,11 +4,19 @@ import type { Accent } from '../../../types/settings';
 import type { ChatMessage } from '../client';
 import { AiError } from '../errors';
 import { extractJsonObject, list, str } from './json';
-import { DIRECT, JSON_ONLY, SHORT_EXAMPLE } from './style';
+import { DIRECT, fillInstruction, JSON_ONLY, SHORT_EXAMPLE } from './style';
 
+/** 解析时最多留这么多条，提示词里写得再多也只显示这些 */
 const MAX_SENSES = 6;
 
-const SYSTEM = ['你是面向中文读者的英汉双解词典。', JSON_ONLY, DIRECT].join('\n');
+/** 默认的可改部分：角色、风格和内容要求。设置页里改的就是这一段 */
+export const DEFAULT_AI_DICTIONARY_INSTRUCTION = [
+  '你是面向中文读者的英汉双解词典。',
+  DIRECT,
+  `- 常用义项按常用程度排列，最多 ${MAX_SENSES} 条，罕见义项不列`,
+  '- meaning 是简短的中文释义（近义用"；"分隔），definition 是对应的简短英文释义',
+  `- ${SHORT_EXAMPLE}`,
+].join('\n');
 
 const EXAMPLE = {
   word: 'go',
@@ -24,29 +32,33 @@ const EXAMPLE = {
   ],
 };
 
+/**
+ * system 是可改的那段（instruction），user 是固定的：查询的词 + 输出格式。
+ * 格式这部分解析器要靠它，设置页里不让改。
+ */
 export function aiDictionaryMessages(
   word: string,
   sentence: string,
   accent: Accent,
+  instruction = DEFAULT_AI_DICTIONARY_INSTRUCTION,
 ): ChatMessage[] {
   const accentName = accent === 'uk' ? '英式' : '美式';
   return [
-    { role: 'system', content: SYSTEM },
+    { role: 'system', content: fillInstruction(instruction, { word, sentence }) },
     {
       role: 'user',
       content: [
         `查询的词：${word}`,
         ...(sentence ? [`原句（只用来判断原形和词性，释义要覆盖常用义项）：${sentence}`] : []),
         '',
-        '按这个格式返回原形的词典条目：',
+        `${JSON_ONLY}按这个格式返回原形的词典条目：`,
         JSON.stringify(EXAMPLE),
         '',
-        '要求：',
+        '字段规则：',
         '- word：原形（went 写 go，magazines 写 magazine；专有名词保留大小写）',
         `- phonetic：原形的${accentName}国际音标，不带斜杠或方括号`,
-        `- senses：常用义项按常用程度排列，最多 ${MAX_SENSES} 条，罕见义项不列；pos 用 n. v. adj. 等缩写；`,
-        '  meaning 是简短的中文释义（近义用"；"分隔），definition 是对应的简短英文释义；',
-        `  ${SHORT_EXAMPLE}，exampleTranslation 是它的中文翻译`,
+        '- senses：义项数组；pos 用 n. v. adj. 等缩写；meaning 是中文释义，definition 是英文释义；',
+        '  example 是英文例句，exampleTranslation 是它的中文翻译',
       ].join('\n'),
     },
   ];

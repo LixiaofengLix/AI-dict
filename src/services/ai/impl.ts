@@ -1,12 +1,14 @@
 import type { AiConfig } from '../../types/ai';
+import type { PromptKind } from '../../types/settings';
 
-import { getAccent, getAiConfig } from '../settings';
+import { getAccent, getAiConfig, getPromptOverrides } from '../settings';
 import { aiCache, contextMeaningKey, type PassageKind, wordKey } from './cache';
 import { type ChatMessage, chatCompletion } from './client';
 import { AiError, describeAiError } from './errors';
 import { aiDictionaryMessages, parseAiDictionary } from './prompts/aiDictionary';
 import { collocationsMessages, parseCollocations } from './prompts/collocations';
 import { contextMeaningMessages } from './prompts/contextMeaning';
+import { instructionOf, promptVariant } from './prompts/registry';
 import { translateDirection, translateMessages } from './prompts/translate';
 import { parseWordCluster, wordClusterMessages } from './prompts/wordCluster';
 import type { AiService, GenerateOptions, PassageContext, StreamOptions } from './types';
@@ -18,6 +20,12 @@ const TEXT_TEMPERATURE = 0.3;
 const JSON_TEMPERATURE = 0.2;
 /** 常见搭配的结果格式变了就换这个值，旧格式的缓存不再命中 */
 const COLLOCATIONS_FORMAT = 'forms';
+
+/** 这次请求用的提示词（可改的部分）和对应的缓存区分值 */
+async function promptFor(kind: PromptKind) {
+  const instruction = instructionOf(await getPromptOverrides(), kind);
+  return { instruction, variant: promptVariant(instruction, kind) };
+}
 
 function isComplete(config: AiConfig) {
   return Boolean(config.apiKey && config.baseUrl && config.model);
@@ -54,16 +62,17 @@ async function cachedPassageText(
   input: PassageContext,
   options: StreamOptions,
   messages: () => ChatMessage[],
+  variant = '',
 ): Promise<string> {
   if (!options.refresh) {
-    const hit = await aiCache.getPassage(kind, input.text);
+    const hit = await aiCache.getPassage(kind, input.text, variant);
     if (hit) {
       options.onText?.(hit);
       return hit;
     }
   }
   const text = await streamText(messages(), options);
-  await aiCache.setPassage(kind, input.text, text);
+  await aiCache.setPassage(kind, input.text, text, variant);
   return text;
 }
 
@@ -128,7 +137,8 @@ export const aiImpl: AiService = {
   },
 
   async contextMeaning({ word, sentence }, options = {}) {
-    const key = contextMeaningKey(sentence, word);
+    const { instruction, variant } = await promptFor('contextMeaning');
+    const key = contextMeaningKey(sentence, word, variant);
     if (!options.refresh) {
       const hit = await aiCache.get<string>(key);
       if (hit) {
@@ -136,53 +146,69 @@ export const aiImpl: AiService = {
         return hit;
       }
     }
-    const text = await streamText(contextMeaningMessages(word, sentence), options);
+    const text = await streamText(contextMeaningMessages(word, sentence, instruction), options);
     await aiCache.set(key, 'contextMeaning', text);
     return text;
   },
 
   async aiDictionary({ word, sentence }, options = {}) {
     const accent = await getAccent();
+    const { instruction, variant } = await promptFor('aiDictionary');
     return cachedWordResult(
       'aiDictionary',
       word,
       options,
       async () => {
-        const messages = aiDictionaryMessages(word, sentence, accent);
+        const messages = aiDictionaryMessages(word, sentence, accent, instruction);
         return parseAiDictionary(await generateJson(messages, options), word);
       },
       (entry) => ({ lemma: entry.word, forms: [] }),
-      accent,
+      accent + variant,
     );
   },
 
-  wordCluster({ word, sentence }, options = {}) {
+  async wordCluster({ word, sentence }, options = {}) {
+    const { instruction, variant } = await promptFor('wordCluster');
     return cachedWordResult(
       'wordCluster',
       word,
       options,
-      async () =>
-        parseWordCluster(await generateJson(wordClusterMessages(word, sentence), options), word),
+      async () => {
+        const messages = wordClusterMessages(word, sentence, instruction);
+        return parseWordCluster(await generateJson(messages, options), word);
+      },
       (cluster) => ({ lemma: cluster.forms[0]?.word, forms: cluster.forms.map((f) => f.word) }),
+      variant,
     );
   },
 
-  collocations({ word, sentence }, options = {}) {
+  async collocations({ word, sentence }, options = {}) {
+    const { instruction, variant } = await promptFor('collocations');
     return cachedWordResult(
       'collocations',
       word,
       options,
-      async () =>
-        parseCollocations(await generateJson(collocationsMessages(word, sentence), options)),
+      async () => {
+        const messages = collocationsMessages(word, sentence, instruction);
+        return parseCollocations(await generateJson(messages, options));
+      },
       () => ({ forms: [] }),
-      COLLOCATIONS_FORMAT,
+      COLLOCATIONS_FORMAT + variant,
     );
   },
 
-  translate(input, options = {}) {
+  async translate(input, options = {}) {
     // 方向由选中文字本身定（5.1），同一段文字的方向不会变，缓存仍按文字存
-    return cachedPassageText('translate', input, options, () =>
-      translateMessages(input, translateDirection(input.text)),
+    const direction = translateDirection(input.text);
+    const { instruction, variant } = await promptFor(
+      direction === 'toEnglish' ? 'translateToEnglish' : 'translateToChinese',
+    );
+    return cachedPassageText(
+      'translate',
+      input,
+      options,
+      () => translateMessages(input, direction, instruction),
+      variant,
     );
   },
 

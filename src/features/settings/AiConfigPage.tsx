@@ -13,6 +13,7 @@ import { getAiConfig, setAiConfig } from '../../services/settings';
 import type { AiConfig, ThinkingMode } from '../../types/ai';
 import { FormField } from './components/FormField';
 import { PreferencesSection } from './PreferencesSection';
+import { PromptsSection } from './PromptsSection';
 import { ShortcutsSection } from './ShortcutsSection';
 
 const THINKING_OPTIONS: readonly { value: ThinkingMode; label: string }[] = [
@@ -30,7 +31,7 @@ type Status = { ok: boolean; text: string };
 
 /**
  * 设置页（样张 12）：AI 配置（3.4，交互照 ReadingBook 的 AiConfigScreen）、快捷键、口音和开机启动（7.1）。
- * 两列网格：左边是 AI 配置的重点卡，占两行；右边上下是快捷键和偏好。三块各自读写各自的设置，互不影响。
+ * 两列网格：左边是 AI 配置的重点卡，占两行；右边上下是快捷键和偏好；下面整行是提示词。各块各自读写各自的设置，互不影响。
  */
 export default function AiConfigPage() {
   const [initial, setInitial] = useState<AiConfig | null>(null);
@@ -60,6 +61,7 @@ export default function AiConfigPage() {
         )}
         <ShortcutsSection />
         <PreferencesSection />
+        <PromptsSection />
       </div>
     </div>
   );

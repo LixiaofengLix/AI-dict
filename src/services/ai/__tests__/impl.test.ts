@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { AiConfig } from '../../../types/ai';
-import type { Accent } from '../../../types/settings';
+import type { Accent, PromptOverrides } from '../../../types/settings';
 import { createMemoryDb, type MemoryDb } from '../../__tests__/memoryDb';
 import type { ChatOptions } from '../client';
 import { AiError, describeAiError } from '../errors';
@@ -11,6 +11,7 @@ const mock = vi.hoisted(() => ({
   chat: vi.fn(),
   config: { apiKey: '', baseUrl: '', model: '', thinking: 'high' } as AiConfig,
   accent: 'us' as Accent,
+  prompts: {} as PromptOverrides,
   db: null as MemoryDb | null,
 }));
 
@@ -21,6 +22,7 @@ vi.mock('../client', () => ({
 vi.mock('../../settings', () => ({
   getAiConfig: async () => mock.config,
   getAccent: async () => mock.accent,
+  getPromptOverrides: async () => mock.prompts,
 }));
 
 vi.mock('../../db', () => ({
@@ -45,6 +47,7 @@ beforeEach(() => {
   mock.chat.mockReset();
   mock.config = EMPTY;
   mock.accent = 'us';
+  mock.prompts = {};
   mock.db = createMemoryDb();
 });
 
@@ -116,7 +119,48 @@ describe('aiImpl.contextMeaning', () => {
     expect(config).toEqual(CONFIG);
     const user = messages[messages.length - 1].content;
     expect(user).toContain('We were all feeling seedy.');
-    expect(user).toContain('以"seedy 在这里"开头');
+    expect(messages[0].content).toContain('以"seedy 在这里"开头');
+  });
+});
+
+describe('自定义提示词', () => {
+  const input = { word: 'seedy', sentence: 'We were all feeling seedy.' };
+
+  beforeEach(() => {
+    mock.config = CONFIG;
+    mock.chat.mockResolvedValue('{"collocations": []}');
+  });
+
+  it('改过的部分换掉 system，{word} 换成查询的词，固定的格式照旧', async () => {
+    mock.prompts = { collocations: '只列和 {word} 有关的商务搭配。' };
+    await aiImpl.collocations(input);
+    const messages = mock.chat.mock.calls[0][1];
+    expect(messages[0].content).toBe('只列和 seedy 有关的商务搭配。');
+    expect(messages[1].content).toContain('只输出一个 JSON 对象');
+    expect(messages[1].content).toContain('"collocations"');
+  });
+
+  it('改提示词后不读旧缓存，改回默认又能命中原来的', async () => {
+    await aiImpl.collocations(input);
+    mock.prompts = { collocations: '换个说法' };
+    await aiImpl.collocations(input);
+    expect(mock.chat).toHaveBeenCalledTimes(2);
+    mock.prompts = {};
+    await aiImpl.collocations(input);
+    expect(mock.chat).toHaveBeenCalledTimes(2);
+  });
+
+  it('翻译按方向用各自的提示词，也分开缓存', async () => {
+    mock.chat.mockResolvedValue('## 中文翻译\n译文');
+    const passage = { text: 'I was a hospital in myself.', before: '', after: '' };
+    await aiImpl.translate(passage);
+    mock.prompts = { translateToEnglish: '中译英改过了' };
+    await aiImpl.translate(passage);
+    expect(mock.chat).toHaveBeenCalledTimes(1);
+    mock.prompts = { translateToChinese: '英译中改过了' };
+    await aiImpl.translate(passage);
+    expect(mock.chat).toHaveBeenCalledTimes(2);
+    expect(mock.chat.mock.calls[1][1][0].content).toBe('英译中改过了');
   });
 });
 

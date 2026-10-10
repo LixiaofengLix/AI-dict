@@ -1,5 +1,5 @@
 import type { AiConfig, ThinkingMode } from '../types/ai';
-import type { Accent } from '../types/settings';
+import type { Accent, PromptKind, PromptOverrides } from '../types/settings';
 import { isMac } from '../utils/platform';
 import { getDb } from './db';
 
@@ -11,6 +11,18 @@ const KEY_SHORTCUTS = 'shortcuts';
 
 /** 发音口音 */
 const KEY_ACCENT = 'accent';
+
+/** 改过的提示词（只存可改的那部分），按 PromptKind 存 */
+const KEY_PROMPTS = 'prompts';
+
+const PROMPT_KINDS: readonly PromptKind[] = [
+  'contextMeaning',
+  'aiDictionary',
+  'wordCluster',
+  'collocations',
+  'translateToChinese',
+  'translateToEnglish',
+];
 
 /** 两个全局快捷键，和 utils 里的 PopupAction 一一对应 */
 export type Shortcuts = { selection: string; input: string };
@@ -116,4 +128,32 @@ export async function getAccent(): Promise<Accent> {
 
 export async function setAccent(accent: Accent): Promise<void> {
   await write(KEY_ACCENT, accent);
+}
+
+/** 只留认识的项和非空字符串，表被手改过也不会把怪东西塞进 prompt */
+function toPromptOverrides(stored: unknown): PromptOverrides {
+  const s = (typeof stored === 'object' && stored !== null ? stored : {}) as Record<
+    string,
+    unknown
+  >;
+  const overrides: PromptOverrides = {};
+  for (const kind of PROMPT_KINDS) {
+    const value = s[kind];
+    if (typeof value === 'string' && value.trim()) {
+      overrides[kind] = value;
+    }
+  }
+  return overrides;
+}
+
+/**
+ * 改过的提示词。没有的项用默认（见 ai/prompts/registry）。
+ * 改过的提示词按内容区分缓存，改完再查会重新请求。
+ */
+export async function getPromptOverrides(): Promise<PromptOverrides> {
+  return toPromptOverrides(await read(KEY_PROMPTS));
+}
+
+export async function setPromptOverrides(overrides: PromptOverrides): Promise<void> {
+  await write(KEY_PROMPTS, toPromptOverrides(overrides));
 }

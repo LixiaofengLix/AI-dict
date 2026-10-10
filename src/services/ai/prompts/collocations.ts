@@ -3,11 +3,19 @@ import type { Collocation } from '../../../types/ai';
 import type { ChatMessage } from '../client';
 import { AiError } from '../errors';
 import { extractJsonObject, list, str } from './json';
-import { DIRECT, JSON_ONLY, SHORT_EXAMPLE } from './style';
+import { DIRECT, fillInstruction, JSON_ONLY, SHORT_EXAMPLE } from './style';
 
+/** 解析时最多留这么多条 */
 const MAX_ITEMS = 6;
 
-const SYSTEM = ['你是面向中文读者的英语词汇老师。', JSON_ONLY, DIRECT].join('\n');
+/** 默认的可改部分：角色、风格和内容要求。设置页里改的就是这一段 */
+export const DEFAULT_COLLOCATIONS_INSTRUCTION = [
+  '你是面向中文读者的英语词汇老师。',
+  DIRECT,
+  `- 最多 ${MAX_ITEMS} 条最常用的，按常用程度排列：固定词组、短语动词、常见词语搭配`,
+  '- meaning 是简短的中文释义',
+  `- ${SHORT_EXAMPLE}`,
+].join('\n');
 
 const EXAMPLE = {
   collocations: [
@@ -21,24 +29,28 @@ const EXAMPLE = {
   ],
 };
 
-export function collocationsMessages(word: string, sentence: string): ChatMessage[] {
+/** system 是可改的那段（instruction），user 是固定的：查询的词 + 输出格式 */
+export function collocationsMessages(
+  word: string,
+  sentence: string,
+  instruction = DEFAULT_COLLOCATIONS_INSTRUCTION,
+): ChatMessage[] {
   return [
-    { role: 'system', content: SYSTEM },
+    { role: 'system', content: fillInstruction(instruction, { word, sentence }) },
     {
       role: 'user',
       content: [
         `查询的词：${word}`,
         ...(sentence ? [`原句（只用来判断原形和词性）：${sentence}`] : []),
         '',
-        '按这个格式返回原形的常见搭配：',
+        `${JSON_ONLY}按这个格式返回原形的常见搭配：`,
         JSON.stringify(EXAMPLE),
         '',
-        '要求：',
-        `- 最多 ${MAX_ITEMS} 条最常用的，按常用程度排列：固定词组、短语动词、常见词语搭配`,
-        '- phrase 用原形书写，可用 sb. / sth. 占位；meaning 是简短的中文释义',
+        '字段规则：',
+        '- phrase 用原形书写，可用 sb. / sth. 占位；meaning 是中文释义',
         '- forms 列出这个搭配在实际文本里可能出现的全部写法，全部小写：包括 phrase 本身和其中动词、名词的各种变形；',
         '  用 / 表示的几种说法分开写；sb. / sth. 等占位词原样保留',
-        `- ${SHORT_EXAMPLE}，exampleTranslation 是它的中文翻译`,
+        '- example 是英文例句，exampleTranslation 是它的中文翻译',
         '- 这个词没有常见搭配时 collocations 给空数组',
       ].join('\n'),
     },

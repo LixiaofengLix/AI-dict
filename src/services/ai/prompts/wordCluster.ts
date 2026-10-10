@@ -3,7 +3,7 @@ import type { ConfusableWord, RelatedWord, WordCluster, WordForm } from '../../.
 import type { ChatMessage } from '../client';
 import { AiError } from '../errors';
 import { extractJsonObject, list, str } from './json';
-import { DIRECT, JSON_ONLY, SHORT_EXAMPLE } from './style';
+import { DIRECT, fillInstruction, JSON_ONLY, SHORT_EXAMPLE } from './style';
 
 /** 变形词的标签和显示顺序（PRD W-5） */
 export const FORM_LABELS = [
@@ -20,7 +20,14 @@ export const FORM_LABELS = [
 const MAX_FAMILY = 6;
 const MAX_CONFUSABLES = 4;
 
-const SYSTEM = ['你是面向中文读者的英语词汇老师。', JSON_ONLY, DIRECT].join('\n');
+/** 默认的可改部分：角色、风格和内容要求。设置页里改的就是这一段 */
+export const DEFAULT_WORD_CLUSTER_INSTRUCTION = [
+  '你是面向中文读者的英语词汇老师。',
+  DIRECT,
+  `- family：常用的同根词、派生词，最多 ${MAX_FAMILY} 个；meaning 是简短的中文释义`,
+  `- confusables：拼写或意思容易混淆的词，最多 ${MAX_CONFUSABLES} 个；difference 用一句中文（不超过 40 字）说明区别`,
+  `- ${SHORT_EXAMPLE}`,
+].join('\n');
 
 const EXAMPLE = {
   forms: [
@@ -50,24 +57,29 @@ const EXAMPLE = {
   ],
 };
 
-export function wordClusterMessages(word: string, sentence: string): ChatMessage[] {
+/** system 是可改的那段（instruction），user 是固定的：查询的词 + 输出格式 */
+export function wordClusterMessages(
+  word: string,
+  sentence: string,
+  instruction = DEFAULT_WORD_CLUSTER_INSTRUCTION,
+): ChatMessage[] {
   return [
-    { role: 'system', content: SYSTEM },
+    { role: 'system', content: fillInstruction(instruction, { word, sentence }) },
     {
       role: 'user',
       content: [
         `查询的词：${word}`,
         ...(sentence ? [`原句（只用来判断原形和词性）：${sentence}`] : []),
         '',
-        '按这个格式返回原形的"单词簇"：',
+        `${JSON_ONLY}按这个格式返回原形的"单词簇"：`,
         JSON.stringify(EXAMPLE),
         '',
-        '要求：',
+        '字段规则：',
         `- forms：第一项是 {"label": "原形"}；其余只列这个词实际存在的变形，label 只能是 ${FORM_LABELS.slice(1).join('、')}；`,
         '  动词列第三人称单数、过去式、过去分词、现在分词，可数名词列复数，形容词和副词有比较级、最高级时列出；没有的不列',
-        `- family：常用的同根词、派生词，最多 ${MAX_FAMILY} 个；pos 用 n. v. adj. adv. 等缩写，meaning 是简短的中文释义`,
-        `- confusables：拼写或意思容易混淆的词，最多 ${MAX_CONFUSABLES} 个；difference 用一句中文（不超过 40 字）说明区别`,
-        `- ${SHORT_EXAMPLE}，exampleTranslation 是它的中文翻译`,
+        '- family：同根词、派生词；pos 用 n. v. adj. adv. 等缩写，meaning 是中文释义',
+        '- confusables：易混词；meaning 是中文释义，difference 是中文说明的区别',
+        '- example 是英文例句，exampleTranslation 是它的中文翻译',
         '- 没有内容的组给空数组',
       ].join('\n'),
     },

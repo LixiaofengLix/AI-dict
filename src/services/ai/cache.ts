@@ -21,15 +21,24 @@ const normalize = (word: string) => word.trim().toLowerCase();
 const CONTEXT_MEANING_VERSION = 'v2';
 const PASSAGE_VERSION = 'v2';
 
-export function contextMeaningKey(sentence: string, word: string) {
-  return ['contextMeaning', CONTEXT_MEANING_VERSION, sentence.trim(), normalize(word)].join('\n');
+/** variant 是提示词的版本（见 prompts/registry 的 promptVariant），默认提示词为空 */
+const versioned = (version: string, variant: string) =>
+  variant ? `${version}-${variant}` : version;
+
+export function contextMeaningKey(sentence: string, word: string, variant = '') {
+  return [
+    'contextMeaning',
+    versioned(CONTEXT_MEANING_VERSION, variant),
+    sentence.trim(),
+    normalize(word),
+  ].join('\n');
 }
 
-export function passageKey(kind: PassageKind, text: string) {
-  return [kind, PASSAGE_VERSION, text.trim()].join('\n');
+export function passageKey(kind: PassageKind, text: string, variant = '') {
+  return [kind, versioned(PASSAGE_VERSION, variant), text.trim()].join('\n');
 }
 
-/** variant 区分同一个词的不同版本，例如 AI 词典的音标跟口音走 */
+/** variant 区分同一个词的不同版本，例如 AI 词典的音标跟口音走、改过的提示词 */
 export function wordKey(
   kind: Exclude<CacheKind, 'contextMeaning' | PassageKind>,
   lemma: string,
@@ -98,13 +107,13 @@ export const aiCache = {
     return read<T>(key);
   },
 
-  getPassage(kind: PassageKind, text: string) {
-    return read<string>(passageKey(kind, text), PASSAGE_TTL_MS);
+  getPassage(kind: PassageKind, text: string, variant = '') {
+    return read<string>(passageKey(kind, text, variant), PASSAGE_TTL_MS);
   },
 
-  async setPassage(kind: PassageKind, text: string, value: string) {
+  async setPassage(kind: PassageKind, text: string, value: string, variant = '') {
     await purgeExpiredPassages();
-    await write([{ key: passageKey(kind, text), kind, value }]);
+    await write([{ key: passageKey(kind, text, variant), kind, value }]);
   },
 
   set(key: string, kind: CacheKind, value: unknown) {
