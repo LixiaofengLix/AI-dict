@@ -124,8 +124,10 @@ describe('快捷键设置', () => {
 });
 
 describe('截图识别设置', () => {
-  it('没设置过时云 OCR 是关的，Key 为空', async () => {
+  it('没设置过时两层云识别都是关的，模型名和 Key 为空', async () => {
     await expect(getOcrConfig()).resolves.toEqual({
+      vision: false,
+      visionModel: '',
       baidu: false,
       baiduApiKey: '',
       baiduSecretKey: '',
@@ -133,7 +135,13 @@ describe('截图识别设置', () => {
   });
 
   it('存进去能原样读回来，值按 JSON 存在 ocr 这行', async () => {
-    const config = { baidu: true, baiduApiKey: 'ak-1', baiduSecretKey: 'sk-1' };
+    const config = {
+      vision: true,
+      visionModel: 'qwen-vl-max',
+      baidu: true,
+      baiduApiKey: 'ak-1',
+      baiduSecretKey: 'sk-1',
+    };
     await setOcrConfig(config);
 
     expect(JSON.parse(fake.rows.get('ocr') as string)).toEqual(config);
@@ -141,8 +149,10 @@ describe('截图识别设置', () => {
   });
 
   it('存的内容缺字段或字段不合法时用默认值补齐，勾选项只认 true', async () => {
-    fake.rows.set('ocr', JSON.stringify({ baidu: 'yes', baiduApiKey: 42 }));
+    fake.rows.set('ocr', JSON.stringify({ baidu: 'yes', baiduApiKey: 42, vision: 1 }));
     await expect(getOcrConfig()).resolves.toEqual({
+      vision: false,
+      visionModel: '',
       baidu: false,
       baiduApiKey: '',
       baiduSecretKey: '',

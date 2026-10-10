@@ -13,8 +13,12 @@ vi.mock('@tauri-apps/api/core', () => ({ invoke }));
 const httpFetch = vi.hoisted(() => vi.fn());
 vi.mock('@tauri-apps/plugin-http', () => ({ fetch: httpFetch }));
 
+/** 大模型读图走 AI 层（它自己有单测，这里只关心路由有没有走到） */
+const chatCompletion = vi.hoisted(() => vi.fn());
+vi.mock('../ai/client', () => ({ chatCompletion }));
+
 import { recognizeText } from '../ocr';
-import { setOcrConfig } from '../settings';
+import { setAiConfig, setOcrConfig } from '../settings';
 
 const IMAGE = 'iVBORw0KGgo=';
 
@@ -27,14 +31,38 @@ const JOINED = 'The alarm went off.';
 const ok = (body: unknown) => ({ ok: true, status: 200, text: async () => JSON.stringify(body) });
 const fail = (status: number) => ({ ok: false, status, text: async () => 'boom' });
 
-/** 开通云 OCR，两个 Key 都填好 */
+/** 只开百度云 OCR，两个 Key 都填好 */
 const enableBaidu = () =>
-  setOcrConfig({ baidu: true, baiduApiKey: 'ak', baiduSecretKey: 'sk' });
+  setOcrConfig({
+    vision: false,
+    visionModel: '',
+    baidu: true,
+    baiduApiKey: 'ak',
+    baiduSecretKey: 'sk',
+  });
+
+/** 只开大模型读图，模型名填好；AI 配置也一起配上（读图复用它） */
+const enableVision = async () => {
+  await setOcrConfig({
+    vision: true,
+    visionModel: 'qwen-vl-max',
+    baidu: false,
+    baiduApiKey: '',
+    baiduSecretKey: '',
+  });
+  await setAiConfig({
+    apiKey: 'sk-ai',
+    baseUrl: 'https://api.example.com/v1',
+    model: 'deepseek-chat',
+    thinking: 'none',
+  });
+};
 
 beforeEach(() => {
   memory.db = createMemoryDb();
   invoke.mockReset();
   httpFetch.mockReset();
+  chatCompletion.mockReset();
   invoke.mockResolvedValue(SYSTEM_LINES);
 });
 
@@ -47,7 +75,13 @@ describe('截图识别的路由', () => {
   });
 
   it('勾了但 Key 没填全时不算开通，还是走系统 OCR', async () => {
-    await setOcrConfig({ baidu: true, baiduApiKey: 'ak', baiduSecretKey: '' });
+    await setOcrConfig({
+      vision: false,
+      visionModel: '',
+      baidu: true,
+      baiduApiKey: 'ak',
+      baiduSecretKey: '',
+    });
 
     await expect(recognizeText(IMAGE)).resolves.toBe(JOINED);
     expect(httpFetch).not.toHaveBeenCalled();
@@ -118,5 +152,96 @@ describe('截图识别的路由', () => {
     expect(httpFetch.mock.calls[2][0]).toContain('oauth/2.0/token');
     expect(httpFetch.mock.calls[3][0]).toContain('access_token=tok-2');
     expect(invoke).not.toHaveBeenCalled();
+  });
+});
+
+describe('大模型读图（9.4）', () => {
+  it('开着就读图，模型名单独填、图按 data URL 传、不带思考参数', async () => {
+    await enableVision();
+    chatCompletion.mockResolvedValue('The alarm went\noff.');
+
+    await expect(recognizeText(IMAGE)).resolves.toBe(JOINED);
+
+    expect(invoke).not.toHaveBeenCalled();
+    expect(httpFetch).not.toHaveBeenCalled();
+    const [config, messages, options] = chatCompletion.mock.calls[0];
+    expect(config).toMatchObject({ model: 'qwen-vl-max', apiKey: 'sk-ai' });
+    expect(messages[1].content[1]).toEqual({
+      type: 'image_url',
+      image_url: { url: `data:image/png;base64,${IMAGE}` },
+    });
+    // 认字不该带发挥
+    expect(options).toMatchObject({ temperature: 0, thinking: false });
+  });
+
+  it('两个都开时先读图，走通了就不再问百度', async () => {
+    await enableVision();
+    await setOcrConfig({
+      vision: true,
+      visionModel: 'qwen-vl-max',
+      baidu: true,
+      baiduApiKey: 'ak',
+      baiduSecretKey: 'sk',
+    });
+    chatCompletion.mockResolvedValue('The alarm went\noff.');
+
+    await expect(recognizeText(IMAGE)).resolves.toBe(JOINED);
+    expect(httpFetch).not.toHaveBeenCalled();
+  });
+
+  it('读图失败时降到百度云 OCR', async () => {
+    await enableVision();
+    await setOcrConfig({
+      vision: true,
+      visionModel: 'qwen-vl-max',
+      baidu: true,
+      baiduApiKey: 'ak',
+      baiduSecretKey: 'sk',
+    });
+    chatCompletion.mockRejectedValue(new Error('model does not support images'));
+    httpFetch.mockResolvedValueOnce(ok(TOKEN_BODY)).mockResolvedValueOnce(ok(WORDS_BODY));
+
+    await expect(recognizeText(IMAGE)).resolves.toBe(JOINED);
+    expect(httpFetch).toHaveBeenCalled();
+    expect(invoke).not.toHaveBeenCalled();
+  });
+
+  it('读图失败、百度也失败时降到系统 OCR', async () => {
+    await enableVision();
+    await setOcrConfig({
+      vision: true,
+      visionModel: 'qwen-vl-max',
+      baidu: true,
+      baiduApiKey: 'ak',
+      baiduSecretKey: 'sk',
+    });
+    chatCompletion.mockRejectedValue(new Error('boom'));
+    httpFetch.mockResolvedValue(fail(500));
+
+    await expect(recognizeText(IMAGE)).resolves.toBe(JOINED);
+    expect(invoke).toHaveBeenCalledWith('ocr_system', { image: IMAGE });
+  });
+
+  it('模型名没填、或 AI 配置不全时不算开通，走系统 OCR', async () => {
+    await setOcrConfig({
+      vision: true,
+      visionModel: '  ',
+      baidu: false,
+      baiduApiKey: '',
+      baiduSecretKey: '',
+    });
+    await expect(recognizeText(IMAGE)).resolves.toBe(JOINED);
+    expect(chatCompletion).not.toHaveBeenCalled();
+
+    // 填了模型名但 AI 配置还是空的（比如没配 Key）
+    await setOcrConfig({
+      vision: true,
+      visionModel: 'qwen-vl-max',
+      baidu: false,
+      baiduApiKey: '',
+      baiduSecretKey: '',
+    });
+    await expect(recognizeText(IMAGE)).resolves.toBe(JOINED);
+    expect(chatCompletion).not.toHaveBeenCalled();
   });
 });

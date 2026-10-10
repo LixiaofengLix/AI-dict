@@ -13,8 +13,12 @@ export type PromptKind =
 /** 用户改过的提示词（只存可改的那部分）；没有的项用默认 */
 export type PromptOverrides = Partial<Record<PromptKind, string>>;
 
-/** 截图识别的配置（9.3）：云 OCR 是可勾选项，系统 OCR 一直是兜底 */
+/** 截图识别的配置（9.3、9.4）：云端的两层是可勾选项，系统 OCR 一直是兜底 */
 export interface OcrConfig {
+  /** 勾了才让大模型读图，而且要填视觉模型名、AI 配置也得齐全 */
+  vision: boolean;
+  /** 视觉模型名，Base URL 和 API Key 复用 AI 配置 */
+  visionModel: string;
   /** 勾了才走百度高精度云 OCR，而且两个 Key 都得填 */
   baidu: boolean;
   baiduApiKey: string;

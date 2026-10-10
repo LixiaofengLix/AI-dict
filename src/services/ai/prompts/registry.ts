@@ -65,7 +65,11 @@ export function lockedPreview(kind: PromptKind, accent: Accent): string {
   const word = '{查询的词}';
   const sentence = '{原句}';
   const passage = { text: '{选中的内容}', before: '{上文（有的话）}', after: '{下文（有的话）}' };
-  const userOf = (messages: ChatMessage[]) => messages[1]?.content ?? '';
+  // 这些提示词的 user 消息都是纯文本（带图片的多模态消息只在大模型读图那条路上）
+  const userOf = (messages: ChatMessage[]) => {
+    const content = messages[1]?.content ?? '';
+    return typeof content === 'string' ? content : '';
+  };
   switch (kind) {
     case 'contextMeaning':
       return userOf(contextMeaningMessages(word, sentence));

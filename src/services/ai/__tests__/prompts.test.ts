@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import type { ChatMessage } from '../client';
 import { AiError } from '../errors';
 import { aiDictionaryMessages, parseAiDictionary } from '../prompts/aiDictionary';
 import { contextMeaningMessages } from '../prompts/contextMeaning';
@@ -15,6 +16,14 @@ import {
 } from '../prompts/registry';
 import { fillInstruction } from '../prompts/style';
 import { parseWordCluster } from '../prompts/wordCluster';
+
+/** 这些 prompt 的 user 消息都是纯文本（多模态消息只在大模型读图那条路上） */
+function textOf(message: ChatMessage): string {
+  if (typeof message.content !== 'string') {
+    throw new Error('这条消息应该是纯文本');
+  }
+  return message.content;
+}
 
 const SENSE = {
   pos: 'v.',
@@ -229,7 +238,7 @@ describe('translateMessages', () => {
 
   it('上下文放在选中内容前后，没有上下文时省略', () => {
     const messages = translateMessages(input, 'toChinese');
-    const user = messages[messages.length - 1].content;
+    const user = textOf(messages[messages.length - 1]);
     expect(user.indexOf('【上文】')).toBeLessThan(user.indexOf('【选中的内容】'));
     expect(user.indexOf('【选中的内容】')).toBeLessThan(user.indexOf('【下文】'));
 

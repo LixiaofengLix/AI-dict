@@ -1,7 +1,8 @@
 import { invoke } from '@tauri-apps/api/core';
 import { joinOcrLines } from '../utils/joinOcrLines';
 import { recognizeWithBaidu } from './baiduOcr';
-import { getOcrConfig } from './settings';
+import { getAiConfig, getOcrConfig } from './settings';
+import { recognizeWithVision } from './visionOcr';
 
 /**
  * 弹系统框选截一块屏幕（macOS），返回截图的 PNG base64；用户按 Esc 取消框选时返回 null。
@@ -30,24 +31,43 @@ export async function captureScreenRegion(region: ScreenRegion): Promise<string>
 /**
  * 把图上的文字认出来，拼成一段返回；没认出字返回空字符串。图是上面两个 capture 给的 base64。
  *
- * 识别分两层（阶段 9），由设置页的开关定：勾了云 OCR（百度高精度，9.3）就先走云，
- * 失败（没网、Key 错、额度用尽、图太大）自动降回系统 OCR——图已经拿在手里，不用重新框选。
- * 系统 OCR 一直是兜底，不用配置。
+ * 识别分三层（阶段 9），由设置页的开关定，按 大模型读图（9.4）→ 百度云 OCR（9.3）→ 系统 OCR
+ * 依次试，前一层失败（没网、Key 错、额度用尽、模型不支持图片）自动降下一层——
+ * 图已经拿在手里，不用重新框选。系统 OCR 一直是兜底，不用配置。
  *
  * 没有屏幕录制权限时截到的其他窗口是空的，同样是空字符串，不会报错——
  * 要不要给授权引导由调用方判断，见 isScreenCaptureTrusted。
  */
 export async function recognizeText(image: string): Promise<string> {
+  return joinOcrLines(await recognizeLines(image));
+}
+
+/** 三层依次试，返回第一层认出的行 */
+async function recognizeLines(image: string): Promise<string[]> {
   const config = await getOcrConfig();
+
+  // 读图复用 AI 配置的 Base URL / API Key，模型名单独填；缺哪个都算没开这一层
+  if (config.vision && config.visionModel.trim()) {
+    const ai = await getAiConfig();
+    if (ai.apiKey.trim() && ai.baseUrl.trim()) {
+      try {
+        return await recognizeWithVision(image, ai, config.visionModel.trim());
+      } catch (error) {
+        console.warn('大模型读图失败，降到下一层', error);
+      }
+    }
+  }
+
   // 勾了但 Key 没填全时不算开了云 OCR：设置里改了开关还没保存也会落到这里
   if (config.baidu && config.baiduApiKey.trim() && config.baiduSecretKey.trim()) {
     try {
-      return joinOcrLines(await recognizeWithBaidu(image, config));
+      return await recognizeWithBaidu(image, config);
     } catch (error) {
-      console.warn('云 OCR 失败，回退系统 OCR', error);
+      console.warn('云 OCR 失败，降回系统 OCR', error);
     }
   }
-  return joinOcrLines(await invoke<string[]>('ocr_system', { image }));
+
+  return invoke<string[]>('ocr_system', { image });
 }
 
 /**

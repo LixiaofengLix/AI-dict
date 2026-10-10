@@ -54,6 +54,8 @@ function OcrForm({ initial }: { initial: OcrConfig }) {
     setStatus(null);
     try {
       await setOcrConfig({
+        vision: form.vision,
+        visionModel: form.visionModel.trim(),
         baidu: form.baidu,
         baiduApiKey: form.baiduApiKey.trim(),
         baiduSecretKey: form.baiduSecretKey.trim(),
@@ -70,43 +72,75 @@ function OcrForm({ initial }: { initial: OcrConfig }) {
   return (
     <section className={PANEL.plain}>
       <h2 className={PANEL_TITLE}>截图识别</h2>
+      {/* 整句写在一行：JSX 里手动断行会渲染成一个空格，折行交给 prettier（它只在空格处折） */}
       <p className={CAPTION}>
-        截图后先按这里开的识别方式认字，失败时自动降回系统 OCR：它离线可用、不花钱，
-        但中文和屏幕小字容易认错，推荐开云 OCR。
+        截图后按这里开的识别方式认字：两个都开时先让大模型读图，不行降到百度云 OCR，再不行降到系统
+        OCR。系统 OCR 离线、免费，是保底；中文和屏幕小字它容易认错，推荐至少开一个云端的。
       </p>
 
-      <label className="mt-3 flex items-center justify-between gap-4">
-        <span>
-          <span className="block text-[13px] font-bold text-ink">百度高精度云 OCR</span>
-          <span className={`block ${CAPTION}`}>联网把截图发给百度识别，中英混排更准</span>
-        </span>
-        <Switch
-          label="百度高精度云 OCR"
-          checked={form.baidu}
-          onChange={(baidu) => update({ baidu })}
-        />
-      </label>
+      <div className="mt-3">
+        <label className="flex items-center justify-between gap-4">
+          <span>
+            <span className="block text-[13px] font-bold text-ink">大模型读图</span>
+            <span className={`block ${CAPTION}`}>让配好的 AI 服务直接看图认字</span>
+          </span>
+          <Switch
+            label="大模型读图"
+            checked={form.vision}
+            onChange={(vision) => update({ vision })}
+          />
+        </label>
 
-      {form.baidu && (
-        <div className="mt-3 flex flex-col gap-2.5">
-          <FormField
-            label="API Key"
-            secret
-            value={form.baiduApiKey}
-            onValueChange={(baiduApiKey) => update({ baiduApiKey })}
+        {form.vision && (
+          <div className="mt-3 flex flex-col gap-2.5">
+            <FormField
+              label="视觉模型名"
+              value={form.visionModel}
+              onValueChange={(visionModel) => update({ visionModel })}
+              placeholder="qwen-vl-max"
+            />
+            <p className={`mx-1 ${CAPTION}`}>
+              复用上面「AI 服务配置」的 Base URL 和 API Key，模型名换成能看图的（默认配的 deepseek
+              系不支持看图）。
+            </p>
+          </div>
+        )}
+      </div>
+
+      <div className="mt-3">
+        <label className="flex items-center justify-between gap-4">
+          <span>
+            <span className="block text-[13px] font-bold text-ink">百度高精度云 OCR</span>
+            <span className={`block ${CAPTION}`}>联网把截图发给百度识别，中英混排更准</span>
+          </span>
+          <Switch
+            label="百度高精度云 OCR"
+            checked={form.baidu}
+            onChange={(baidu) => update({ baidu })}
           />
-          <FormField
-            label="Secret Key"
-            secret
-            value={form.baiduSecretKey}
-            onValueChange={(baiduSecretKey) => update({ baiduSecretKey })}
-          />
-          <p className={`mx-1 ${CAPTION}`}>
-            在百度智能云控制台开通「文字识别」并创建应用，两个 Key 都填了才会走云 OCR。
-            换取来的 token 存在本机，30 天内不用重复换。
-          </p>
-        </div>
-      )}
+        </label>
+
+        {form.baidu && (
+          <div className="mt-3 flex flex-col gap-2.5">
+            <FormField
+              label="API Key"
+              secret
+              value={form.baiduApiKey}
+              onValueChange={(baiduApiKey) => update({ baiduApiKey })}
+            />
+            <FormField
+              label="Secret Key"
+              secret
+              value={form.baiduSecretKey}
+              onValueChange={(baiduSecretKey) => update({ baiduSecretKey })}
+            />
+            <p className={`mx-1 ${CAPTION}`}>
+              在百度智能云控制台开通「文字识别」并创建应用，两个 Key 都填了才会走云 OCR。换取来的
+              token 存在本机，30 天内不用重复换。
+            </p>
+          </div>
+        )}
+      </div>
 
       <div className="mt-[22px] flex items-center gap-2.5">
         <button

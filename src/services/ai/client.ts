@@ -6,7 +6,14 @@ import { abortError } from '../../utils/async';
 import { AiError } from './errors';
 import { createSseParser, errorMessageOf, parseStreamChunk } from './sse';
 
-export type ChatMessage = { role: 'system' | 'user' | 'assistant'; content: string };
+/** 多模态消息里的一段：文字，或一张图（OpenAI 的 image_url，值是 data URL） */
+export type ContentPart =
+  { type: 'text'; text: string } | { type: 'image_url'; image_url: { url: string } };
+
+export type ChatMessage = {
+  role: 'system' | 'user' | 'assistant';
+  content: string | ContentPart[];
+};
 
 export interface ChatOptions {
   signal?: AbortSignal;
@@ -16,6 +23,12 @@ export interface ChatOptions {
   maxTokens?: number;
   /** 等首包、以及两块数据之间最多等多久 */
   timeoutMs?: number;
+  /**
+   * 传 false 时请求里不带思考参数（默认带，按配置里的思考模式）。
+   * 大模型读图用：那条请求是另一个模型，思考参数是 DeepSeek 专用的，别的厂商可能不认；
+   * 认字也不需要思考。
+   */
+  thinking?: boolean;
 }
 
 export const DEFAULT_TIMEOUT_MS = 30_000;
@@ -61,7 +74,14 @@ export async function chatCompletion(
   messages: ChatMessage[],
   options: ChatOptions = {},
 ): Promise<string> {
-  const { signal, onText, temperature, maxTokens, timeoutMs = DEFAULT_TIMEOUT_MS } = options;
+  const {
+    signal,
+    onText,
+    temperature,
+    maxTokens,
+    timeoutMs = DEFAULT_TIMEOUT_MS,
+    thinking = true,
+  } = options;
   if (signal?.aborted) {
     throw abortError();
   }
@@ -106,7 +126,7 @@ export async function chatCompletion(
         model: config.model,
         messages,
         stream: true,
-        ...thinkingParams(config.thinking),
+        ...(thinking ? thinkingParams(config.thinking) : {}),
         ...(temperature === undefined ? {} : { temperature }),
         ...(maxTokens === undefined ? {} : { max_tokens: maxTokens }),
       }),

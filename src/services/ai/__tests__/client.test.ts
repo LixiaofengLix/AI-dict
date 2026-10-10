@@ -136,6 +136,25 @@ describe('chatCompletion', () => {
     });
   });
 
+  it('多模态消息原样进 body；thinking 传 false 时不带思考参数', async () => {
+    mockFetch.mockImplementation(sseResponse([delta('The alarm went'), 'data: [DONE]\n\n']));
+    const parts = [
+      { type: 'text' as const, text: '把这张图里的文字原样输出。' },
+      { type: 'image_url' as const, image_url: { url: 'data:image/png;base64,xx' } },
+    ];
+
+    const text = await chatCompletion(CONFIG, [{ role: 'user', content: parts }], {
+      thinking: false,
+      temperature: 0,
+    });
+
+    expect(text).toBe('The alarm went');
+    const body = JSON.parse(mockFetch.mock.calls[0][1].body);
+    expect(body.messages).toEqual([{ role: 'user', content: parts }]);
+    expect(body).not.toHaveProperty('thinking');
+    expect(body).not.toHaveProperty('reasoning_effort');
+  });
+
   it('中文被切在字节中间也不乱码', async () => {
     const bytes = new TextEncoder().encode(delta('语境释义'));
     const cut = bytes.indexOf(0xe8) + 1;

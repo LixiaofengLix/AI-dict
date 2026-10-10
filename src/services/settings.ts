@@ -179,6 +179,8 @@ function toOcrConfig(stored: unknown): OcrConfig {
   >;
   const text = (value: unknown) => (typeof value === 'string' ? value : '');
   return {
+    vision: s.vision === true,
+    visionModel: text(s.visionModel),
     baidu: s.baidu === true,
     baiduApiKey: text(s.baiduApiKey),
     baiduSecretKey: text(s.baiduSecretKey),
