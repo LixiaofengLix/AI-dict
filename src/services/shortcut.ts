@@ -16,6 +16,17 @@ let current: Shortcuts | null = null;
 let started = false;
 const startupFailed: FailedShortcut[] = [];
 
+/** 设置页录快捷键时全局快捷键先注销，不然按到已注册的组合会直接弹窗，网页收不到按键 */
+let paused = false;
+
+/** 注册、注销、暂停、恢复都排队一个个来，免得录完立刻保存时和恢复注册撞在一起 */
+let queue: Promise<unknown> = Promise.resolve();
+function serial<T>(task: () => Promise<T>): Promise<T> {
+  const run = queue.then(task, task);
+  queue = run.catch(() => {});
+  return run;
+}
+
 /**
  * 启动时注册（主窗口挂载时调）。返回注册失败的动作（快捷键被别的程序占用时注册会失败）。
  * 重复调用只做第一次：React 的 StrictMode 会把 effect 跑两遍。
@@ -23,7 +34,8 @@ const startupFailed: FailedShortcut[] = [];
 export async function registerShortcuts(): Promise<FailedShortcut[]> {
   if (started) return startupFailed;
   started = true;
-  const { failed } = await applyShortcuts(await getShortcuts());
+  const shortcuts = await getShortcuts();
+  const { failed } = await serial(() => applyNow(shortcuts));
   startupFailed.push(...failed);
   return startupFailed;
 }
@@ -33,7 +45,43 @@ export async function registerShortcuts(): Promise<FailedShortcut[]> {
  * 注册失败的回滚到原来的键并记进失败列表。
  * 返回实际生效的快捷键——调用方按它存库，失败的键不写进去，下次启动还是老样子。
  */
-export async function applyShortcuts(
+export function applyShortcuts(
+  next: Shortcuts,
+): Promise<{ failed: FailedShortcut[]; applied: Shortcuts }> {
+  return serial(async () => {
+    await resumeNow();
+    return applyNow(next);
+  });
+}
+
+/** 录快捷键期间注销全部全局快捷键（设置页开始录时调） */
+export function pauseShortcuts(): Promise<void> {
+  return serial(async () => {
+    if (paused || !current) return;
+    paused = true;
+    for (const action of ACTIONS) {
+      await unregister(current[action]).catch(() => {});
+    }
+  });
+}
+
+/** 录完（或放弃）后把当前这套快捷键注册回去 */
+export function resumeShortcuts(): Promise<void> {
+  return serial(resumeNow);
+}
+
+async function resumeNow(): Promise<void> {
+  if (!paused || !current) return;
+  paused = false;
+  for (const action of ACTIONS) {
+    const accelerator = current[action];
+    await registerOne(accelerator, () => void showPopup(action)).catch((error: unknown) => {
+      console.error(`${POPUP_ACTION_LABELS[action]} 的快捷键 ${accelerator} 恢复注册失败`, error);
+    });
+  }
+}
+
+async function applyNow(
   next: Shortcuts,
 ): Promise<{ failed: FailedShortcut[]; applied: Shortcuts }> {
   const failed: FailedShortcut[] = [];

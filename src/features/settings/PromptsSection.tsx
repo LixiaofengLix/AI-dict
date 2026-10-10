@@ -68,7 +68,7 @@ export function PromptsSection() {
 
   if (!saved || !drafts) {
     return (
-      <section className={`col-span-2 ${PANEL.plain}`}>
+      <section className={PANEL.plain}>
         <h2 className={PANEL_TITLE}>提示词</h2>
         <p className={CAPTION}>正在读取…</p>
       </section>
@@ -104,7 +104,7 @@ export function PromptsSection() {
   };
 
   return (
-    <section className={`col-span-2 ${PANEL.plain}`}>
+    <section className={PANEL.plain}>
       <h2 className={PANEL_TITLE}>
         提示词
         {customized ? <span className={tagClass('orange')}>已自定义</span> : null}

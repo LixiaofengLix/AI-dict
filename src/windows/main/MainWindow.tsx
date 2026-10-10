@@ -3,7 +3,7 @@ import { listen } from '@tauri-apps/api/event';
 import { Keys } from '../../components/Keys';
 import { Mascot } from '../../components/Mascot';
 import { buttonClass, CAPTION } from '../../components/styles';
-import AiConfigPage from '../../features/settings/AiConfigPage';
+import { SettingsPage, type SettingsTab } from '../../features/settings/SettingsPage';
 import { VocabularyPage } from '../../features/vocabulary/VocabularyPage';
 import { aiImpl } from '../../services/ai/impl';
 import { registerShortcuts, type FailedShortcut } from '../../services/shortcut';
@@ -20,9 +20,10 @@ const PAGES: readonly { value: MainPage; label: string }[] = [
   { value: 'settings', label: '设置' },
 ];
 
-// 主窗口：生词本（6.2）、设置（3.4 起是 AI 配置页，7.1 补快捷键、口音、开机启动）。1.1 起从托盘打开
+// 主窗口：生词本（6.2）、设置（左边菜单分应用设置、AI 设置、提示词设置三页）。1.1 起从托盘打开
 export default function MainWindow() {
   const [page, setPage] = useState<MainPage>('vocabulary');
+  const [settingsTab, setSettingsTab] = useState<SettingsTab>('app');
   const [failedShortcuts, setFailedShortcuts] = useState<FailedShortcut[]>([]);
 
   useEffect(() => {
@@ -47,6 +48,7 @@ export default function MainWindow() {
       // 还没配置 AI 时启动就把主窗口打开（4.3）：首次使用从填 Key 开始，配好之后不再自动弹
       if (!(await aiImpl.isConfigured())) {
         setPage('settings');
+        setSettingsTab('ai');
         await showMainWindow();
       }
     })();
@@ -78,11 +80,21 @@ export default function MainWindow() {
       </header>
 
       {failedShortcuts.length > 0 && (
-        <ShortcutBanner failed={failedShortcuts} onOpenSettings={() => setPage('settings')} />
+        <ShortcutBanner
+          failed={failedShortcuts}
+          onOpenSettings={() => {
+            setPage('settings');
+            setSettingsTab('app');
+          }}
+        />
       )}
 
       <div className="min-h-0 flex-1">
-        {page === 'vocabulary' ? <VocabularyPage /> : <AiConfigPage />}
+        {page === 'vocabulary' ? (
+          <VocabularyPage />
+        ) : (
+          <SettingsPage tab={settingsTab} onTabChange={setSettingsTab} />
+        )}
       </div>
     </main>
   );

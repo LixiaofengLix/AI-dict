@@ -12,9 +12,6 @@ import { aiImpl } from '../../services/ai/impl';
 import { getAiConfig, setAiConfig } from '../../services/settings';
 import type { AiConfig, ThinkingMode } from '../../types/ai';
 import { FormField } from './components/FormField';
-import { PreferencesSection } from './PreferencesSection';
-import { PromptsSection } from './PromptsSection';
-import { ShortcutsSection } from './ShortcutsSection';
 
 const THINKING_OPTIONS: readonly { value: ThinkingMode; label: string }[] = [
   { value: 'none', label: 'None' },
@@ -29,10 +26,7 @@ const THINKING_HINT =
 /** 测试连接、保存的结果提示 */
 type Status = { ok: boolean; text: string };
 
-/**
- * 设置页（样张 12）：AI 配置（3.4，交互照 ReadingBook 的 AiConfigScreen）、快捷键、口音和开机启动（7.1）。
- * 两列网格：左边是 AI 配置的重点卡，占两行；右边上下是快捷键和偏好；下面整行是提示词。各块各自读写各自的设置，互不影响。
- */
+/** 设置页的「AI 设置」（样张 12 左边那张重点卡，3.4，交互照 ReadingBook 的 AiConfigScreen） */
 export default function AiConfigPage() {
   const [initial, setInitial] = useState<AiConfig | null>(null);
 
@@ -48,22 +42,13 @@ export default function AiConfigPage() {
     };
   }, []);
 
-  return (
-    <div className="scroll-thin h-full overflow-y-auto">
-      <div className="grid grid-cols-2 items-start gap-x-[22px] gap-y-5 px-6 pt-5 pb-[26px]">
-        {/* 读到已保存的配置后再挂载表单，输入框的初始值才正确 */}
-        {initial ? (
-          <AiConfigForm initial={initial} />
-        ) : (
-          <section className={`row-span-2 ${PANEL.feature}`}>
-            <p className={CAPTION}>正在读取配置…</p>
-          </section>
-        )}
-        <ShortcutsSection />
-        <PreferencesSection />
-        <PromptsSection />
-      </div>
-    </div>
+  // 读到已保存的配置后再挂载表单，输入框的初始值才正确
+  return initial ? (
+    <AiConfigForm initial={initial} />
+  ) : (
+    <section className={PANEL.feature}>
+      <p className={CAPTION}>正在读取配置…</p>
+    </section>
   );
 }
 
@@ -127,7 +112,7 @@ function AiConfigForm({ initial }: { initial: AiConfig }) {
   const idle = busy === null;
 
   return (
-    <section className={`row-span-2 ${PANEL.feature}`}>
+    <section className={PANEL.feature}>
       <h2 className={PANEL_TITLE}>
         AI 服务配置
         {connected ? <span className={tagClass('mint')}>已连接</span> : null}
