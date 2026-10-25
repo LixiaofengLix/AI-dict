@@ -10,7 +10,7 @@ export type PassageResult = { text: string | null; done: boolean; error: string 
 const PENDING: PassageResult = { text: null, done: false, error: null };
 
 /**
- * 翻译，流式更新（DEV_PLAN 5.1）。generation 每加 1 就跳过缓存重新生成一次；
+ * 翻译，流式更新。generation 每加 1 就跳过缓存重新生成一次；
  * retry 在失败后重新请求一次（失败的结果不会进缓存，不需要跳过缓存）。
  */
 export function usePassageAi(text: string, generation: number) {

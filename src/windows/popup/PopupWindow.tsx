@@ -174,7 +174,7 @@ export default function PopupWindow() {
 
   return (
     // 窗口比卡片大一圈（tauri.conf.json 里 468×608 对 420×560），这一圈是透明的留白，
-    // 给下面这条 CSS 投影用——系统阴影会在窗口边上压出一条黑线，所以关掉了（见 DEV_PLAN 取舍）
+    // 给下面这条 CSS 投影用——系统阴影会在窗口边上压出一条黑线，所以关掉了
     <div className="h-screen p-6">
       <div className="flex h-full flex-col overflow-hidden rounded-card border border-line bg-surface text-ink shadow-pop">
         <header

@@ -21,7 +21,7 @@ tauri-build = { version = "2", features = [] }
 tauri = { version = "2", features = ["tray-icon"] }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
-# 数据库：只开 sqlite 驱动（见 docs/DEV_PLAN.md 第 3 节）
+# 数据库：只开 sqlite 驱动
 tauri-plugin-sql = { version = "2", features = ["sqlite"] }
 tauri-plugin-http = "2"
 # 截图以 PNG 的 base64 在前端和 Rust 之间传（见 src/ocr.rs）

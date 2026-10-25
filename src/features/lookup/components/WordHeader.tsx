@@ -8,7 +8,7 @@ import { PhoneticPill } from './PhoneticPill';
 type Props = {
   /** 点的那个词（原句里的形式，如 went） */
   query: string;
-  /** AI 词典结果：原形、音标从这来（6.1 起点词就请求，见 DEV_PLAN 第 3 节） */
+  /** AI 词典结果：原形、音标从这来（点词时就并行请求） */
   result: AiResult<AiDictEntry>;
   /** 句子模式和生词详情里小一号（样张 02、11 是 20px，单词模式 22px） */
   compact?: boolean;

@@ -12,7 +12,7 @@ import { OriginalSentence } from './OriginalSentence';
 import { type Block, parseSections, splitBold } from './parseSections';
 
 /**
- * 句子模式（DEV_PLAN 5.1~5.3，样张 01~03）：原句（词可点）+ 译文，点词后译文区换成词卡。
+ * 句子模式：原句（词可点）+ 译文，点词后译文区换成词卡。
  * 英译中只有中文翻译；中文输入走中译英，是英文翻译 + 句意解释（讲选词），词也不可点。
  */
 export function SentenceView({

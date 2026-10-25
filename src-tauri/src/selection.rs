@@ -132,7 +132,7 @@ mod platform {
     }
 
     /// 弹一次系统授权提示。提示里的应用名是 macOS 认定的责任进程：打包后是 AI-dict，
-    /// 开发期从终端启动的进程算在终端头上（TCC 的归属问题，见 docs/DEV_PLAN.md 第 3 节）。
+    /// 开发期从终端启动的进程算在终端头上（TCC 的归属问题）。
     pub(super) fn request_trust() -> bool {
         let prompt_key = unsafe { CFString::wrap_under_get_rule(kAXTrustedCheckOptionPrompt) };
         let options = CFDictionary::from_CFType_pairs(&[(

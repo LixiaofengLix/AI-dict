@@ -7,7 +7,7 @@ import { describe, expect, it } from 'vitest';
 /**
  * 迁移由 Rust 侧用 include_str! 注册（src-tauri/src/lib.rs），真正执行是插件的事。
  * 这里读同一批 SQL 文件，在内存 SQLite 上按文件名顺序跑一遍：
- * 验证 SQL 本身能用，建出来的表就是 docs/DEV_PLAN.md 第 7 节要的样子。
+ * 验证 SQL 本身能用，建出来的表符合数据模型。
  */
 const MIGRATIONS_DIR = fileURLToPath(new URL('../../../src-tauri/migrations', import.meta.url));
 const LIB_RS = fileURLToPath(new URL('../../../src-tauri/src/lib.rs', import.meta.url));
