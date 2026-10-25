@@ -7,6 +7,7 @@ import { WordPanel } from '../../features/lookup/WordPanel';
 import { AiNotConfigured } from '../../features/lookup/components/AiNotConfigured';
 import { useAiConfigured } from '../../features/lookup/hooks/useAiConfigured';
 import { SentenceView } from '../../features/sentence/SentenceView';
+import { restartApp } from '../../services/app';
 import {
   POPUP_TRIGGER_EVENT,
   showMainWindow,
@@ -269,6 +270,8 @@ interface PermissionGuide {
   tag: string;
   title: string;
   steps: string[];
+  /** 授权后是否需要重启进程才生效（屏幕录制要，辅助功能不要） */
+  restart?: boolean;
   /** 先请系统提示一次（把本应用加进名单），再打开系统设置的对应页 */
   request: () => Promise<unknown>;
   open: () => Promise<void>;
@@ -292,19 +295,20 @@ const SCREEN_CAPTURE: PermissionGuide = {
   tag: 'macOS · 屏幕录制',
   title: '截图要用「屏幕录制」权限，现在还没开。',
   steps: [
-    '点下面的按钮，系统会先弹一次提示',
+    '点「打开系统设置」，系统会先弹一次提示',
     '在「隐私与安全性 → 屏幕录制」打开 AI-dict',
-    '按系统提示退出并重新打开 AI-dict',
+    '回来再按一次截图快捷键，然后点「重启应用」',
   ],
+  restart: true,
   request: requestScreenCapturePermission,
   open: openScreenCaptureSettings,
 };
 
 /**
- * 没有系统权限时的引导（macOS，样张 09）。系统设置一打开，弹窗就失去焦点关掉了，
- * 所以这里不用管"授权之后怎么办"——用户回来再按一次快捷键即可，那条路会重新判断权限。
+ * 没有系统权限时的引导。系统设置一打开，弹窗就失去焦点关掉了，所以回来要再按一次快捷键；
+ * 屏幕录制这种必须重启进程才生效的权限，多给一个「重启应用」按钮。
  */
-function PermissionView({ tag, title, steps, request, open }: PermissionGuide) {
+function PermissionView({ tag, title, steps, restart, request, open }: PermissionGuide) {
   const [error, setError] = useState<string | null>(null);
 
   async function openSettings() {
@@ -343,13 +347,24 @@ function PermissionView({ tag, title, steps, request, open }: PermissionGuide) {
         </ol>
         <p className={`mt-1.5 ${CAPTION}`}>开发期从终端启动时，这个权限算在终端头上。</p>
       </div>
-      <button
-        type="button"
-        onClick={() => void openSettings()}
-        className={`self-center ${buttonClass('accent')}`}
-      >
-        打开系统设置
-      </button>
+      <div className="flex items-center justify-center gap-2">
+        <button
+          type="button"
+          onClick={() => void openSettings()}
+          className={buttonClass('accent')}
+        >
+          打开系统设置
+        </button>
+        {restart && (
+          <button
+            type="button"
+            onClick={() => void restartApp()}
+            className={buttonClass('dark')}
+          >
+            重启应用
+          </button>
+        )}
+      </div>
       {error && <p className="text-center text-caption text-danger">{error}</p>}
     </div>
   );

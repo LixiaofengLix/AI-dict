@@ -8,6 +8,13 @@ use tauri::{
 };
 use tauri_plugin_sql::{Migration, MigrationKind};
 
+/// 重启应用。屏幕录制权限授权后必须重启进程才生效（系统会把它缓存在进程里）。
+/// 托盘是常驻的，关窗口只是隐藏，用户很容易误以为已经重启过了。
+#[tauri::command]
+fn restart_app(app: tauri::AppHandle) {
+    app.restart();
+}
+
 /// 把窗口叫出来。窗口是隐藏而不是销毁的，所以先取消最小化再显示
 fn show_window(app: &tauri::AppHandle, label: &str) {
     if let Some(window) = app.get_webview_window(label) {
@@ -30,6 +37,49 @@ fn migrations() -> Vec<Migration> {
         sql: include_str!("../migrations/001_init.sql"),
         kind: MigrationKind::Up,
     }]
+}
+
+/// 建托盘：菜单 + 图标
+fn build_tray(app: &tauri::AppHandle) -> tauri::Result<()> {
+    let input_item = MenuItem::with_id(app, "input", "输入翻译", true, None::<&str>)?;
+    let vocabulary_item = MenuItem::with_id(app, "vocabulary", "生词本", true, None::<&str>)?;
+    let settings_item = MenuItem::with_id(app, "settings", "设置", true, None::<&str>)?;
+    let quit_item = MenuItem::with_id(app, "quit", "退出", true, None::<&str>)?;
+    let menu = Menu::with_items(
+        app,
+        &[&input_item, &vocabulary_item, &settings_item, &quit_item],
+    )?;
+
+    TrayIconBuilder::with_id("tray")
+        .icon(app.default_window_icon().unwrap().clone())
+        .menu(&menu)
+        .show_menu_on_left_click(true)
+        .on_menu_event(|app, event| match event.id.as_ref() {
+            "input" => {
+                show_window(app, "popup");
+                // 事件名和 payload 要和 src/services/window.ts 里的一致
+                let _ = app.emit_to(
+                    "popup",
+                    "popup-trigger",
+                    serde_json::json!({ "action": "input" }),
+                );
+            }
+            "vocabulary" | "settings" => {
+                // 先告诉主窗口切到哪页再显示，免得先闪一下原来那页；
+                // 菜单项的 id 直接当页名（和 src/services/window.ts 的 MainPage 一致）
+                let _ = app.emit_to(
+                    "main",
+                    "main-page",
+                    serde_json::json!({ "page": event.id.as_ref() }),
+                );
+                show_window(app, "main");
+            }
+            "quit" => app.exit(0),
+            _ => {}
+        })
+        .build(app)?;
+
+    Ok(())
 }
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
@@ -55,44 +105,7 @@ pub fn run() {
             #[cfg(target_os = "macos")]
             app.set_activation_policy(tauri::ActivationPolicy::Accessory);
 
-            let input_item = MenuItem::with_id(app, "input", "输入翻译", true, None::<&str>)?;
-            let vocabulary_item =
-                MenuItem::with_id(app, "vocabulary", "生词本", true, None::<&str>)?;
-            let settings_item = MenuItem::with_id(app, "settings", "设置", true, None::<&str>)?;
-            let quit_item = MenuItem::with_id(app, "quit", "退出", true, None::<&str>)?;
-            let menu = Menu::with_items(
-                app,
-                &[&input_item, &vocabulary_item, &settings_item, &quit_item],
-            )?;
-
-            TrayIconBuilder::with_id("tray")
-                .icon(app.default_window_icon().unwrap().clone())
-                .menu(&menu)
-                .show_menu_on_left_click(true)
-                .on_menu_event(|app, event| match event.id.as_ref() {
-                    "input" => {
-                        show_window(app, "popup");
-                        // 事件名和 payload 要和 src/services/window.ts 里的一致
-                        let _ = app.emit_to(
-                            "popup",
-                            "popup-trigger",
-                            serde_json::json!({ "action": "input" }),
-                        );
-                    }
-                    "vocabulary" | "settings" => {
-                        // 先告诉主窗口切到哪页再显示，免得先闪一下原来那页；
-                        // 菜单项的 id 直接当页名（和 src/services/window.ts 的 MainPage 一致）
-                        let _ = app.emit_to(
-                            "main",
-                            "main-page",
-                            serde_json::json!({ "page": event.id.as_ref() }),
-                        );
-                        show_window(app, "main");
-                    }
-                    "quit" => app.exit(0),
-                    _ => {}
-                })
-                .build(app)?;
+            build_tray(app.handle())?;
 
             Ok(())
         })
@@ -106,7 +119,8 @@ pub fn run() {
             ocr::ocr_system,
             ocr::is_screen_capture_trusted,
             ocr::request_screen_capture_permission,
-            ocr::open_screen_capture_settings
+            ocr::open_screen_capture_settings,
+            restart_app
         ])
         .on_window_event(|window, event| {
             // 关窗只隐藏，应用继续驻留托盘；退出走托盘菜单
