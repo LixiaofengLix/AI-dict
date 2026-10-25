@@ -9,8 +9,10 @@ import { useAiConfigured } from '../../features/lookup/hooks/useAiConfigured';
 import { SentenceView } from '../../features/sentence/SentenceView';
 import { restartApp } from '../../services/app';
 import {
+  POPUP_OCR_RESULT_EVENT,
   POPUP_TRIGGER_EVENT,
   showMainWindow,
+  type OcrResultPayload,
   type PopupTriggerPayload,
 } from '../../services/window';
 import { openScreenCaptureSettings, requestScreenCapturePermission } from '../../services/ocr';
@@ -37,8 +39,16 @@ export default function PopupWindow() {
   const [pinned, setPinned] = useState(false);
   // 失焦回调里要读最新的固定状态，用 ref 同步一份
   const pinnedRef = useRef(false);
+  // 截图识别还没回来时别因失焦关掉弹窗：用户看到"识别中"才知道按到了
+  const pendingOcrRef = useRef(false);
   // 每次呼出重新读一遍 AI 配置：用户刚在设置页填完 Key 回来，这里要看到新值
   const configured = useAiConfigured(summonCount);
+
+  const pendingOcr =
+    trigger?.action === 'ocr' && trigger.ocr?.ok === true && trigger.ocr.pending === true;
+  useEffect(() => {
+    pendingOcrRef.current = pendingOcr;
+  }, [pendingOcr]);
 
   useEffect(() => {
     const unlisten = listen<PopupTriggerPayload>(POPUP_TRIGGER_EVENT, (event) => {
@@ -54,6 +64,21 @@ export default function PopupWindow() {
     };
   }, []);
 
+  // 识别完成（或失败）后补发的结果：只接受当前这次请求的，晚到的旧结果丢掉
+  useEffect(() => {
+    const unlisten = listen<OcrResultPayload>(POPUP_OCR_RESULT_EVENT, (event) => {
+      setTrigger((current) => {
+        if (!current || current.action !== 'ocr' || current.requestId !== event.payload.requestId) {
+          return current;
+        }
+        return { ...current, ocr: event.payload.ocr };
+      });
+    });
+    return () => {
+      void unlisten.then((fn) => fn());
+    };
+  }, []);
+
   useEffect(() => {
     const appWindow = getCurrentWindow();
 
@@ -63,11 +88,11 @@ export default function PopupWindow() {
     window.addEventListener('keydown', onKeyDown);
 
     const unlisten = appWindow.onFocusChanged(({ payload: focused }) => {
-      if (focused || pinnedRef.current) return;
+      if (focused || pinnedRef.current || pendingOcrRef.current) return;
       window.setTimeout(() => {
         // 等完再确认一次：中间又拿回焦点就不关
         void appWindow.isFocused().then((isFocused) => {
-          if (!isFocused && !pinnedRef.current) void appWindow.hide();
+          if (!isFocused && !pinnedRef.current && !pendingOcrRef.current) void appWindow.hide();
         });
       }, BLUR_CLOSE_DELAY);
     });
@@ -126,6 +151,7 @@ export default function PopupWindow() {
     if (trigger.action === 'ocr') {
       const ocr = trigger.ocr;
       if (!ocr) return null;
+      if (ocr.ok && ocr.pending) return <OcrLoading />;
       if (!ocr.ok) return renderInput(`截图识别失败（${ocr.error}），直接输入也一样。`);
       if (!ocr.text && !ocr.trusted) return <PermissionView {...SCREEN_CAPTURE} />;
       if (!ocr.text) return renderInput('截图里没认出文字，直接输入也一样。');
@@ -244,6 +270,20 @@ function InputView({
         </p>
       )}
     </>
+  );
+}
+
+/** 截图已经截好、识别还在跑：先给个反馈，别让用户以为快捷键没按到 */
+function OcrLoading() {
+  return (
+    <div className="flex min-h-0 flex-1 flex-col items-center justify-center gap-2.5">
+      <div className="flex items-end gap-3">
+        <Mascot kind="mint" />
+        <Mascot kind="orange" />
+      </div>
+      <p className="text-[13px] font-bold text-ink">正在识别截图…</p>
+      <p className={CAPTION}>大模型读图或云 OCR 可能要几秒</p>
+    </div>
   );
 }
 

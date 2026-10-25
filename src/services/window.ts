@@ -36,12 +36,30 @@ export const POPUP_TRIGGER_EVENT = 'popup-trigger';
 export type SelectionResult =
   { ok: true; text: string; trusted: boolean } | { ok: false; error: string };
 
+/**
+ * 截图识别的结果。pending 表示图已经截好了、识别还在跑——弹窗先出来显示"识别中"，
+ * 云端 OCR / 大模型读图可能要几秒，不能等它们跑完才让用户看到反应。
+ */
+export type OcrResult =
+  | { ok: true; text: string; trusted: boolean; pending?: boolean }
+  | { ok: false; error: string };
+
 export interface PopupTriggerPayload {
   action: PopupAction;
+  /** 截图识别的请求编号：识别结果晚到时用它丢弃过期结果 */
+  requestId?: number;
   /** 划词翻译取到的结果 */
   selection?: SelectionResult;
   /** 截图翻译识别出的结果 */
-  ocr?: SelectionResult;
+  ocr?: OcrResult;
+}
+
+/** 截图识别完成（或失败）后，把最终结果补发给已经打开的弹窗 */
+export const POPUP_OCR_RESULT_EVENT = 'popup-ocr-result';
+
+export interface OcrResultPayload {
+  requestId: number;
+  ocr: OcrResult;
 }
 
 /** 主窗口的两个页面（6.2 加的生词本） */
@@ -96,6 +114,22 @@ async function placePopup(popup: WebviewWindow, action: PopupAction): Promise<vo
 /** 系统框选界面是否开着 */
 let capturing = false;
 
+/** 截图识别请求的编号，晚到的结果不能覆盖新一次请求 */
+let ocrRequestId = 0;
+
+/** 摆好位置、发触发事件、显示并聚焦 */
+async function presentPopup(
+  popup: WebviewWindow,
+  action: PopupAction,
+  payload: PopupTriggerPayload,
+): Promise<void> {
+  // 先定位再显示，免得窗口在旧位置闪一下
+  await placePopup(popup, action);
+  await emitTo('popup', POPUP_TRIGGER_EVENT, payload);
+  await popup.show();
+  await popup.setFocus();
+}
+
 /**
  * 把弹窗叫出来：摆好位置、告诉它触发方式，然后显示。
  * 弹窗是复用的同一个窗口，连续触发不会多开。
@@ -104,30 +138,58 @@ export async function showPopup(action: PopupAction): Promise<void> {
   const popup = await WebviewWindow.getByLabel('popup');
   if (!popup) return;
 
-  // 划词翻译要在弹窗显示之前取词：辅助功能接口和模拟复制都要求被划词的应用还是前台，
-  // 弹窗一显示焦点就跑到我们这边了。走辅助功能接口时取词是微秒级的，弹窗照样立刻出现
-  let payload: PopupTriggerPayload = { action };
-  if (action === 'selection') {
-    payload = await takeSelection();
-  } else if (action === 'ocr') {
+  if (action === 'ocr') {
     // 框选界面还开着时又按了一次：系统截图不能叠两层，忽略
     if (capturing) return;
     capturing = true;
+    const requestId = ++ocrRequestId;
     try {
-      const result = await takeScreenshot();
+      // 图先拿在手里：Windows 上框选窗口自己截屏、裁好（见 pickScreenImage），macOS 走系统框选
+      let image: string | null;
+      try {
+        image = isMac ? await captureScreenshot() : await pickScreenImage();
+      } catch (error) {
+        console.error('截图失败', error);
+        await presentPopup(popup, action, {
+          action,
+          requestId,
+          ocr: { ok: false, error: String(error) },
+        });
+        return;
+      }
       // 用户按 Esc 取消了框选，什么都不弹
-      if (!result) return;
-      payload = result;
+      if (image === null) return;
+
+      // 先把弹窗叫出来，别等识别：大模型读图 / 云 OCR 可能要几秒
+      await presentPopup(popup, action, {
+        action,
+        requestId,
+        ocr: { ok: true, text: '', trusted: true, pending: true },
+      });
+
+      let ocr: OcrResult;
+      try {
+        const text = await recognizeText(image);
+        // 认出了字说明权限是通的，不用再问
+        const trusted = text ? true : await isScreenCaptureTrusted();
+        ocr = { ok: true, text, trusted };
+      } catch (error) {
+        console.error('截图识别失败', error);
+        ocr = { ok: false, error: String(error) };
+      }
+      // 弹窗已经开着，把最终结果补给它；用户已经关了或又触发了别的，弹窗自己按 requestId 丢弃
+      await emitTo('popup', POPUP_OCR_RESULT_EVENT, { requestId, ocr } satisfies OcrResultPayload);
     } finally {
       capturing = false;
     }
+    return;
   }
 
-  // 先定位再显示，免得窗口在旧位置闪一下
-  await placePopup(popup, action);
-  await emitTo('popup', POPUP_TRIGGER_EVENT, payload);
-  await popup.show();
-  await popup.setFocus();
+  // 划词翻译要在弹窗显示之前取词：辅助功能接口和模拟复制都要求被划词的应用还是前台，
+  // 弹窗一显示焦点就跑到我们这边了。走辅助功能接口时取词是微秒级的，弹窗照样立刻出现
+  const payload: PopupTriggerPayload =
+    action === 'selection' ? await takeSelection() : { action };
+  await presentPopup(popup, action, payload);
 }
 
 /**
@@ -145,23 +207,6 @@ export async function showMainWindow(page?: MainPage): Promise<void> {
   await main.unminimize().catch(() => {});
   await main.show();
   await main.setFocus();
-}
-
-/** 框选一块屏幕截出图、认出文字；用户取消时返回 null，失败时把错误信息一起带给弹窗 */
-async function takeScreenshot(): Promise<PopupTriggerPayload | null> {
-  try {
-    // 图先拿在手里：Windows 上框选窗口自己截屏、裁好（见 pickScreenImage），macOS 走系统框选。
-    // 识别走哪条路由 services/ocr 定，换一条不用重新框选
-    const image = isMac ? await captureScreenshot() : await pickScreenImage();
-    if (image === null) return null;
-    const text = await recognizeText(image);
-    // 认出了字说明权限是通的，不用再问
-    const trusted = text ? true : await isScreenCaptureTrusted();
-    return { action: 'ocr', ocr: { ok: true, text, trusted } };
-  } catch (error) {
-    console.error('截图识别失败', error);
-    return { action: 'ocr', ocr: { ok: false, error: String(error) } };
-  }
 }
 
 /** 框选窗口（Windows）松手或取消时发的事件，payload 是 SnipResultPayload */
